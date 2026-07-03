@@ -49,5 +49,31 @@
       "description": "Matches FBX files with corresponding GLB files in the media directory",
       "heartbeat_interval": 300
     }
+  },
+  "blackmagic_mini": {
+    "enabled": true,
+    "source_path": "/web/gebarenoverleg_media/studioFiles/blackmagic_files",
+    "dest_path": "/mnt/bigstorage/blackmagic_filesMini",
+    "state_file": "blackmagic_compress_state.json",
+    "log_file": "logs/blackmagic_mini.log",
+    "skip_log": "logs/blackmagic_mini_skipped.log",
+    "workers": 3,
+    "max_attempts": 5,
+    "encode": {
+      "ssh_host": "monsterfish",
+      "scale_width": 1920,
+      "scale_height": 1080,
+      "codec": "libx265",
+      "crf": 26,
+      "preset": "fast"
+    },
+    "client_monitor": {
+      "enabled": true,
+      "api_url": "https://signcollect.nl/client_monitor_api/api.php",
+      "client_id": "vicon-blackmagic-mini",
+      "client_name": "Vicon Blackmagic Mini Compressor",
+      "description": "Compresses Blackmagic 6K clips to 1080p Mini copies",
+      "heartbeat_interval": 86400
+    }
   }
 }
