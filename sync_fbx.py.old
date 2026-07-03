@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""
+Sync FBX files from Vicon FTP server to local storage.
+Downloads .fbx files from /e/Recordings/*/*/unreal/ directories.
+Skips files that already exist locally.
+"""
+
+import os
+from ftplib import FTP
+
+# Configuration
+FTP_HOST = "100.83.229.92"
+FTP_USER = "vicon"
+FTP_PASS = "CHANGE_ME"
+FTP_BASE_PATH = "/e/Recordings"
+LOCAL_PATH = "/web/gebarenoverleg_media/fbx"
+
+
+def connect_ftp():
+    """Establish FTP connection and return the FTP object."""
+    print(f"Connecting to {FTP_HOST}...")
+    ftp = FTP(FTP_HOST)
+    ftp.login(FTP_USER, FTP_PASS)
+    print("Connected successfully")
+    return ftp
+
+
+def list_directories(ftp, path):
+    """List directories in the given path."""
+    dirs = []
+    try:
+        ftp.cwd(path)
+        items = ftp.nlst()
+        for item in items:
+            try:
+                ftp.cwd(item)
+                dirs.append(item)
+                ftp.cwd("..")
+            except:
+                pass  # Not a directory
+    except Exception as e:
+        print(f"Error listing {path}: {e}")
+    return dirs
+
+
+def find_fbx_files(ftp, path):
+    """Find all .fbx files in the given path."""
+    fbx_files = []
+    try:
+        ftp.cwd(path)
+        items = ftp.nlst()
+        for item in items:
+            if item.lower().endswith('.fbx'):
+                fbx_files.append(item)
+    except Exception as e:
+        pass  # Directory doesn't exist or no files
+    return fbx_files
+
+
+def file_exists_locally(filename):
+    """Check if file already exists in local directory."""
+    local_file = os.path.join(LOCAL_PATH, filename)
+    return os.path.exists(local_file)
+
+
+def download_file(ftp, remote_path, filename):
+    """Download a file from FTP to local directory."""
+    local_file = os.path.join(LOCAL_PATH, filename)
+    try:
+        ftp.cwd(remote_path)
+        with open(local_file, 'wb') as f:
+            ftp.retrbinary(f'RETR {filename}', f.write)
+        return True
+    except Exception as e:
+        print(f"  Error downloading {filename}: {e}")
+        if os.path.exists(local_file):
+            os.remove(local_file)  # Clean up partial download
+        return False
+
+
+def main():
+    """Main sync function."""
+    ftp = connect_ftp()
+
+    downloaded = 0
+    skipped = 0
+    errors = 0
+
+    try:
+        # Get all date directories in /e/Recordings
+        print(f"\nScanning {FTP_BASE_PATH}...")
+        ftp.cwd(FTP_BASE_PATH)
+        date_dirs = list_directories(ftp, FTP_BASE_PATH)
+        print(f"Found {len(date_dirs)} recording directories")
+
+        for date_dir in sorted(date_dirs):
+            date_path = f"{FTP_BASE_PATH}/{date_dir}"
+
+            # Get subdirectories within each date directory
+            sub_dirs = list_directories(ftp, date_path)
+
+            for sub_dir in sub_dirs:
+                unreal_path = f"{date_path}/{sub_dir}/unreal"
+
+                # Check for FBX files in unreal directory
+                fbx_files = find_fbx_files(ftp, unreal_path)
+
+                for fbx_file in fbx_files:
+                    if file_exists_locally(fbx_file):
+                        print(f"[SKIP] {fbx_file} (already exists)")
+                        skipped += 1
+                    else:
+                        print(f"[DOWNLOAD] {fbx_file}...")
+                        if download_file(ftp, unreal_path, fbx_file):
+                            print(f"  Done!")
+                            downloaded += 1
+                        else:
+                            errors += 1
+
+    finally:
+        ftp.quit()
+        print(f"\n--- Summary ---")
+        print(f"Downloaded: {downloaded}")
+        print(f"Skipped:    {skipped}")
+        print(f"Errors:     {errors}")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "scryer": {
+      "args": [],
+      "command": "/home/gomer/scryer/target/release/scryer-mcp",
+      "type": "stdio"
+    }
+  }
+}

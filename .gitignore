@@ -1,0 +1,17 @@
+# Runtime state / caches (large, machine-specific)
+monitor_output.json
+monitor_state.json
+sync_cache.json
+blackmagic_compress_state.json
+*.tmp
+
+# Logs and generated dirs
+logs/
+__pycache__/
+*.pyc
+
+# SDD scratch
+.superpowers/
+
+# Scratch encode temp on the destination mount (never in-repo, but be safe)
+.blackmagic_mini_tmp/

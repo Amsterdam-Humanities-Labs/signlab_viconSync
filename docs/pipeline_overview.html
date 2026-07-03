@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>viconSync — Service Pipeline Overview</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  @page { size: A3 landscape; margin: 0; }
+  html, body { font-family: Helvetica, Arial, sans-serif; color: #1e293b; }
+  .page { width: 420mm; height: 297mm; padding: 9mm 11mm; page-break-after: always; position: relative; }
+  .page:last-child { page-break-after: auto; }
+
+  .pagehead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4mm; }
+  .pagehead h1 { font-size: 26px; letter-spacing: -0.5px; }
+  .pagehead .meta { font-size: 12px; color: #64748b; }
+
+  svg { width: 100%; height: auto; display: block; }
+
+  /* cards rendered inside SVG foreignObject */
+  .card { width: 100%; height: 100%; background: #fff; border: 1.5px solid #cbd5e1;
+          border-left-width: 6px; border-radius: 7px; padding: 7px 9px; overflow: hidden; }
+  .card h3 { font-size: 15px; margin-bottom: 1px; }
+  .card .sub { font-size: 11px; color: #475569; font-weight: bold; margin-bottom: 3px; }
+  .card p { font-size: 11px; color: #334155; line-height: 1.25; }
+  .card.ext { border-style: dashed; background: #f8fafc; }
+  .blue   { border-left-color: #2563eb; }  .blue h3   { color: #1d4ed8; }
+  .amber  { border-left-color: #d97706; }  .amber h3  { color: #b45309; }
+  .purple { border-left-color: #7c3aed; }  .purple h3 { color: #6d28d9; }
+  .teal   { border-left-color: #0f766e; }  .teal h3   { color: #0f766e; }
+  .green  { border-left-color: #16a34a; }  .green h3  { color: #15803d; }
+  .slate  { border-left-color: #475569; }  .slate h3  { color: #334155; }
+  .gray   { border-left-color: #94a3b8; }  .gray h3   { color: #475569; }
+
+  .lbl { font-size: 11px; fill: #64748b; }
+  .bandlbl { font-size: 13px; font-weight: bold; fill: #475569; }
+  .legend { font-size: 12px; fill: #334155; }
+
+  /* page 2 catalog */
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+       color: #64748b; padding: 4px 8px; border-bottom: 2px solid #cbd5e1; }
+  td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; line-height: 1.3; }
+  td.name { font-weight: bold; white-space: nowrap; }
+  td.tech, td.sched { color: #475569; white-space: nowrap; }
+  tr.section td { font-size: 13px; font-weight: bold; color: #fff; padding: 5px 8px; border: none; }
+  tr.sec-blue td { background: #2563eb; } tr.sec-amber td { background: #d97706; }
+  tr.sec-purple td { background: #7c3aed; } tr.sec-teal td { background: #0f766e; }
+  tr.sec-green td { background: #16a34a; }
+  .footnote { position: absolute; bottom: 7mm; left: 11mm; right: 11mm; font-size: 11px; color: #64748b; }
+</style>
+</head>
+<body>
+
+<!-- ============================ PAGE 1 : DIAGRAM ============================ -->
+<div class="page">
+  <div class="pagehead">
+    <h1>viconSync — Service Pipeline Overview</h1>
+    <div class="meta">Host: signcollect server &nbsp;·&nbsp; Generated 2026-06-10 &nbsp;·&nbsp; verified against running systemd units</div>
+  </div>
+
+  <svg viewBox="0 0 1560 1100" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+      </marker>
+      <marker id="arrRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+      </marker>
+    </defs>
+
+    <!-- legend -->
+    <g transform="translate(640,18)">
+      <rect x="0" y="0" width="13" height="13" fill="#2563eb" rx="2"/><text class="legend" x="19" y="11">Vicon mocap</text>
+      <rect x="135" y="0" width="13" height="13" fill="#d97706" rx="2"/><text class="legend" x="154" y="11">Studio capture</text>
+      <rect x="285" y="0" width="13" height="13" fill="#7c3aed" rx="2"/><text class="legend" x="304" y="11">Real-time</text>
+      <rect x="405" y="0" width="13" height="13" fill="#0f766e" rx="2"/><text class="legend" x="424" y="11">Data &amp; UI</text>
+      <rect x="515" y="0" width="13" height="13" fill="#16a34a" rx="2"/><text class="legend" x="534" y="11">Orchestration / monitoring</text>
+      <rect x="745" y="0" width="13" height="13" fill="none" stroke="#94a3b8" stroke-dasharray="3 2" rx="2"/><text class="legend" x="764" y="11">External system</text>
+    </g>
+
+    <!-- column headers -->
+    <text class="bandlbl" x="40"   y="95">SOURCES</text>
+    <text class="bandlbl" x="330"  y="80">INGESTION SERVICES</text>
+    <text class="bandlbl" x="640"  y="410">STORAGE</text>
+    <text class="bandlbl" x="950"  y="95">PROCESSING SERVICES</text>
+    <text class="bandlbl" x="1280" y="95">DATA &amp; UI</text>
+
+    <!-- ======================= arrows (under cards) ======================= -->
+    <!-- Vicon PC -> SSH Sync -->
+    <line x1="255" y1="150" x2="328" y2="140" stroke="#2563eb" stroke-width="2" marker-end="url(#arr)"/>
+    <text class="lbl" x="262" y="135">SSH / SCP</text>
+    <!-- Vicon PC -> FTP Monitor -->
+    <line x1="255" y1="215" x2="328" y2="263" stroke="#7c3aed" stroke-width="2" marker-end="url(#arr)"/>
+    <text class="lbl" x="258" y="252">FTP listing</text>
+    <!-- Cleanup -> Vicon PC (dashed red) -->
+    <polyline points="330,407 290,407 290,237 258,237" fill="none" stroke="#dc2626" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#arrRed)"/>
+    <text class="lbl" x="300" y="330" fill="#dc2626">delete after verify</text>
+    <!-- SSH Sync -> Storage -->
+    <polyline points="555,140 600,140 600,460 637,460" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arr)"/>
+    <!-- Sony SDK -> Storage -->
+    <line x1="555" y1="517" x2="637" y2="497" stroke="#d97706" stroke-width="2" marker-end="url(#arr)"/>
+    <!-- LL Upload -> Storage -->
+    <line x1="555" y1="647" x2="637" y2="545" stroke="#d97706" stroke-width="2" marker-end="url(#arr)"/>
+    <!-- Sony cams -> Sony SDK -->
+    <line x1="255" y1="517" x2="328" y2="517" stroke="#d97706" stroke-width="2" marker-end="url(#arr)"/>
+    <!-- Studio LL -> LL Upload -->
+    <line x1="255" y1="647" x2="328" y2="647" stroke="#d97706" stroke-width="2" marker-end="url(#arr)"/>
+    <!-- Unreal <-> Unreal WS -->
+    <line x1="258" y1="877" x2="327" y2="877" stroke="#7c3aed" stroke-width="2" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <!-- Storage <-> FBX2GLB -->
+    <polyline points="870,450 905,450 905,155 947,155" fill="none" stroke="#2563eb" stroke-width="2" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <text class="lbl" x="878" y="442">FBX in · GLB out</text>
+    <!-- Storage -> GLB Matcher -->
+    <polyline points="870,480 922,480 922,277 947,277" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arr)"/>
+    <!-- Storage -> Vicon File Matcher -->
+    <polyline points="870,510 935,510 935,392 947,392" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arr)"/>
+    <!-- Storage <-> LL Video Converter -->
+    <line x1="870" y1="575" x2="947" y2="637" stroke="#d97706" stroke-width="2" marker-start="url(#arr)" marker-end="url(#arr)"/>
+    <text class="lbl" x="860" y="600">MOV in · MP4 out</text>
+    <!-- FTP Monitor -> MySQL (routed along corridor) -->
+    <polyline points="555,250 620,250 620,212 1240,212 1240,272 1277,272" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#arr)"/>
+    <text class="lbl" x="700" y="206">live capture &amp; file records</text>
+    <!-- GLB Matcher -> MySQL -->
+    <line x1="1185" y1="277" x2="1277" y2="290" stroke="#2563eb" stroke-width="2" marker-end="url(#arr)"/>
+    <!-- Vicon File Matcher -> MySQL -->
+    <polyline points="1185,392 1232,392 1232,318 1277,318" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arr)"/>
+    <!-- MySQL -> Dashboard -->
+    <line x1="1400" y1="340" x2="1400" y2="397" stroke="#0f766e" stroke-width="2" marker-end="url(#arr)"/>
+    <!-- Storage -> Dashboard (dashed) -->
+    <polyline points="870,555 1245,555 1245,450 1277,450" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arr)"/>
+    <text class="lbl" x="1010" y="548">file stats</text>
+
+    <!-- ======================= shared infrastructure band ======================= -->
+    <rect x="20" y="945" width="1520" height="130" rx="10" fill="#f1f5f9"/>
+    <text class="bandlbl" x="40" y="970">SHARED INFRASTRUCTURE — every pipeline service sends heartbeats to the Client Monitor API</text>
+
+    <!-- ======================= cards ======================= -->
+    <!-- sources -->
+    <foreignObject x="40" y="110" width="215" height="150"><div xmlns="http://www.w3.org/1999/xhtml" class="card ext gray">
+      <h3>Vicon PC (Windows)</h3><div class="sub">100.83.229.92 · SSH + FTP</div>
+      <p>Shogun mocap workstation. E:\Recordings (raw takes: unreal, livelink, metadata, shogun_live) and D:\PostExports (post-processed FBX).</p></div></foreignObject>
+    <foreignObject x="40" y="470" width="215" height="95"><div xmlns="http://www.w3.org/1999/xhtml" class="card ext gray">
+      <h3>Sony Cameras</h3><div class="sub">Studio video</div>
+      <p>Reference video of capture sessions.</p></div></foreignObject>
+    <foreignObject x="40" y="600" width="215" height="95"><div xmlns="http://www.w3.org/1999/xhtml" class="card ext gray">
+      <h3>Studio LiveLink</h3><div class="sub">Capture systems</div>
+      <p>Push LiveLink CSV + video takes over HTTP.</p></div></foreignObject>
+    <foreignObject x="40" y="830" width="215" height="95"><div xmlns="http://www.w3.org/1999/xhtml" class="card ext gray">
+      <h3>Unreal Engine</h3><div class="sub">Game engine clients</div>
+      <p>Live avatar animation, mocap playback.</p></div></foreignObject>
+
+    <!-- ingestion -->
+    <foreignObject x="330" y="90" width="225" height="100"><div xmlns="http://www.w3.org/1999/xhtml" class="card blue">
+      <h3>SSH/SCP Sync</h3><div class="sub">sync_vicon_rsync.py · daily 02:30</div>
+      <p>Pulls FBX/GLB, LiveLink CSV, metadata JSON and Shogun captures from the Vicon PC.</p></div></foreignObject>
+    <foreignObject x="330" y="225" width="225" height="100"><div xmlns="http://www.w3.org/1999/xhtml" class="card purple">
+      <h3>FTP Monitor</h3><div class="sub">ftp_monitor.py · polls every 1.5 s</div>
+      <p>Detects new recordings in real time, categorizes per capture, writes to MySQL.</p></div></foreignObject>
+    <foreignObject x="330" y="360" width="225" height="95"><div xmlns="http://www.w3.org/1999/xhtml" class="card blue">
+      <h3>File Cleanup</h3><div class="sub">cleanup_vicon.py · weekly 04:00</div>
+      <p>Verifies local + SharePoint copies, then deletes sources on the Vicon PC.</p></div></foreignObject>
+    <foreignObject x="330" y="470" width="225" height="95"><div xmlns="http://www.w3.org/1999/xhtml" class="card amber">
+      <h3>Sony SDK Camera Server</h3><div class="sub">Node.js · :8080 HTTP / :8081 WS</div>
+      <p>Camera control + video streaming into studioFiles/.</p></div></foreignObject>
+    <foreignObject x="330" y="600" width="225" height="95"><div xmlns="http://www.w3.org/1999/xhtml" class="card amber">
+      <h3>LiveLink Upload Server</h3><div class="sub">Node.js · :3031</div>
+      <p>Receives studio uploads (≤500 MB) into studioFiles/llTakes/.</p></div></foreignObject>
+    <foreignObject x="330" y="830" width="225" height="95"><div xmlns="http://www.w3.org/1999/xhtml" class="card purple">
+      <h3>Unreal WebSocket Server</h3><div class="sub">Node.js · :3008</div>
+      <p>Bidirectional mocap / animation streaming with Unreal clients.</p></div></foreignObject>
+
+    <!-- storage -->
+    <foreignObject x="640" y="420" width="230" height="180"><div xmlns="http://www.w3.org/1999/xhtml" class="card slate">
+      <h3>File Storage</h3><div class="sub">/web/gebarenoverleg_media/</div>
+      <p>fbx/ &nbsp;·&nbsp; llcsv/ &nbsp;·&nbsp; metadata/<br/>shogun_live/ &nbsp;·&nbsp; studioFiles/<br/>llVideos/ &nbsp;·&nbsp; razerFiles/<br/><br/>Archived to SharePoint via rclone.</p></div></foreignObject>
+
+    <!-- processing -->
+    <foreignObject x="950" y="110" width="235" height="90"><div xmlns="http://www.w3.org/1999/xhtml" class="card blue">
+      <h3>FBX→GLB Converter</h3><div class="sub">Node.js · :3016 + hourly batch</div>
+      <p>Converts FBX mocap files to web-viewable GLB.</p></div></foreignObject>
+    <foreignObject x="950" y="235" width="235" height="85"><div xmlns="http://www.w3.org/1999/xhtml" class="card blue">
+      <h3>GLB Matcher</h3><div class="sub">glb_matcher.py</div>
+      <p>Pairs FBX ↔ GLB files, writes glb_path to vicon_files.</p></div></foreignObject>
+    <foreignObject x="950" y="350" width="235" height="85"><div xmlns="http://www.w3.org/1999/xhtml" class="card blue">
+      <h3>Vicon File Matcher</h3><div class="sub">matchVicon.py · daily 23:00</div>
+      <p>Links synced FBX/CSV files to mocap_files records.</p></div></foreignObject>
+    <foreignObject x="950" y="600" width="235" height="90"><div xmlns="http://www.w3.org/1999/xhtml" class="card amber">
+      <h3>LiveLink Video Converter</h3><div class="sub">convert.py + ffmpeg · daily 22:00</div>
+      <p>MOV→MP4 into llVideos/; copies raw CSVs to llcsv/.</p></div></foreignObject>
+
+    <!-- data & UI -->
+    <foreignObject x="1280" y="225" width="240" height="115"><div xmlns="http://www.w3.org/1999/xhtml" class="card teal">
+      <h3>MySQL</h3><div class="sub">admin_gebarenoverleg · :3306</div>
+      <p>Source of truth: vicon_captures, vicon_files, vicon_monitor_metadata, mocap_files.</p></div></foreignObject>
+    <foreignObject x="1280" y="400" width="240" height="100"><div xmlns="http://www.w3.org/1999/xhtml" class="card teal">
+      <h3>Vicon Dashboard</h3><div class="sub">PHP + JS · Apache :80 / :443</div>
+      <p>Web UI: captures by date, file stats, system status. 30 s auto-refresh.</p></div></foreignObject>
+
+    <!-- shared band cards -->
+    <foreignObject x="40" y="985" width="270" height="78"><div xmlns="http://www.w3.org/1999/xhtml" class="card gray">
+      <h3>rclone Mount</h3><div class="sub">rclone-mount.service</div>
+      <p>SharePoint archive: signcollect studioFiles.</p></div></foreignObject>
+    <foreignObject x="340" y="985" width="440" height="78"><div xmlns="http://www.w3.org/1999/xhtml" class="card green">
+      <h3>PythonCron Scheduler</h3><div class="sub">python-scheduler.service</div>
+      <p>Triggers timed jobs: Sync 02:30 · Video Convert 22:00 · File Matcher 23:00 · Cleanup 04:00 (weekly).</p></div></foreignObject>
+    <foreignObject x="810" y="985" width="440" height="78"><div xmlns="http://www.w3.org/1999/xhtml" class="card green">
+      <h3>Client Monitor API (external)</h3><div class="sub">signcollect.nl/client_monitor_api</div>
+      <p>Receives heartbeats from every service; alerts on failures or missed check-ins.</p></div></foreignObject>
+    <foreignObject x="1280" y="985" width="240" height="78"><div xmlns="http://www.w3.org/1999/xhtml" class="card gray">
+      <h3>Server Monitor</h3><div class="sub">server-monitor.service</div>
+      <p>Watches disk, rclone mount, MySQL.</p></div></foreignObject>
+  </svg>
+</div>
+
+<!-- ============================ PAGE 2 : SERVICE CATALOG ============================ -->
+<div class="page">
+  <div class="pagehead">
+    <h1>Service Catalog — what each service does</h1>
+    <div class="meta">viconSync pipeline · 2026-06-10</div>
+  </div>
+
+  <table>
+    <tr><th style="width:16%">Service</th><th style="width:17%">Tech &amp; runtime</th><th style="width:14%">Schedule / port</th><th>Purpose &amp; data flow</th></tr>
+
+    <tr class="section sec-blue"><td colspan="4">Vicon mocap stream</td></tr>
+    <tr><td class="name">SSH/SCP Sync</td><td class="tech">Python · via PythonCron</td><td class="sched">daily 02:30 (120 min timeout)</td>
+        <td>Pulls FBX/GLB, LiveLink CSV, metadata JSON and Shogun MOV/MCP/ENF/X2D files from the Vicon PC (E:\Recordings, D:\PostExports) into /web/gebarenoverleg_media/. Smart size-based change detection.</td></tr>
+    <tr><td class="name">FBX→GLB Converter</td><td class="tech">Node.js Express · fbx2glb-server.service</td><td class="sched">HTTP :3016 · batch hourly</td>
+        <td>Converts FBX mocap files to GLB for web 3D viewing — on demand via HTTP API, plus an hourly batch pass (fbx2glb-batch.service).</td></tr>
+    <tr><td class="name">GLB Matcher</td><td class="tech">Python + MySQL</td><td class="sched">after sync · 300 s poll</td>
+        <td>Pairs each FBX with its converted GLB in the media directory and writes glb_path into the vicon_files table so the dashboard can link 3D previews.</td></tr>
+    <tr><td class="name">Vicon File Matcher</td><td class="tech">Python · via PythonCron</td><td class="sched">daily 23:00</td>
+        <td>Matches synced FBX/CSV files against mocap_files database records using filename patterns, associating capture files with their mocap sessions.</td></tr>
+    <tr><td class="name">File Cleanup</td><td class="tech">Python + SSH + rclone · via PythonCron</td><td class="sched">weekly 04:00</td>
+        <td>Confirms files are safely stored locally and on the SharePoint archive, then deletes them from the Vicon PC (OBS recordings, Shogun captures) to free space.</td></tr>
+    <tr><td class="name">Resync Utility</td><td class="tech">Python · manual CLI</td><td class="sched">on demand</td>
+        <td>Recovery tool: re-downloads specific FBX files from the Vicon FTP based on the contents of fbx/post_processed/.</td></tr>
+
+    <tr class="section sec-amber"><td colspan="4">Studio capture stream</td></tr>
+    <tr><td class="name">Sony SDK Camera Server</td><td class="tech">Node.js · systemd</td><td class="sched">:8080 HTTP · :8081 WS</td>
+        <td>Controls Sony studio cameras and receives their video streams, storing footage under studioFiles/ and serving media to web/Unreal clients.</td></tr>
+    <tr><td class="name">LiveLink Upload Server</td><td class="tech">Node.js + multer · llserver.service</td><td class="sched">:3031</td>
+        <td>HTTP upload endpoint for studio capture systems; accepts LiveLink CSV/video files up to 500 MB into studioFiles/llTakes/ with auto-timestamping on name conflicts.</td></tr>
+    <tr><td class="name">LiveLink Video Converter</td><td class="tech">Python + ffmpeg · via PythonCron</td><td class="sched">daily 22:00 (90 min timeout)</td>
+        <td>Batch-converts studio MOV recordings to MP4 in llVideos/ and copies the matching raw CSV data into llcsv/.</td></tr>
+
+    <tr class="section sec-purple"><td colspan="4">Real-time stream</td></tr>
+    <tr><td class="name">FTP Monitor</td><td class="tech">Python · systemd</td><td class="sched">continuous · 1.5 s poll</td>
+        <td>Watches the Vicon FTP for new recording files the moment they appear, categorizes them by type, groups them per capture session, and writes vicon_captures / vicon_files rows. Also emits monitor_output.json for live views.</td></tr>
+    <tr><td class="name">DB Writer</td><td class="tech">Python module (pymysql)</td><td class="sched">used by FTP Monitor</td>
+        <td>Database abstraction layer handling all MySQL writes of capture metadata and file records into admin_gebarenoverleg.</td></tr>
+    <tr><td class="name">Unreal WebSocket Server</td><td class="tech">Node.js (ws) · systemd</td><td class="sched">:3008 WS</td>
+        <td>Real-time bidirectional bridge with Unreal Engine: streams mocap data, synchronizes animations, drives live avatars.</td></tr>
+
+    <tr class="section sec-teal"><td colspan="4">Data &amp; UI</td></tr>
+    <tr><td class="name">MySQL</td><td class="tech">MySQL Server · mysql.service</td><td class="sched">:3306</td>
+        <td>Source of truth (database admin_gebarenoverleg): vicon_captures, vicon_files, vicon_monitor_metadata and mocap_files tables feed the dashboard.</td></tr>
+    <tr><td class="name">Vicon Dashboard</td><td class="tech">PHP APIs + vanilla JS · Apache + PHP-FPM</td><td class="sched">:80 / :443</td>
+        <td>Web UI showing captures grouped by date, file types and counts, GLB preview links, and overall system status; auto-refreshes every 30 s from MySQL and the filesystem.</td></tr>
+
+    <tr class="section sec-green"><td colspan="4">Orchestration &amp; monitoring</td></tr>
+    <tr><td class="name">PythonCron Scheduler</td><td class="tech">Python daemon · python-scheduler.service</td><td class="sched">always on</td>
+        <td>Central task orchestrator: runs the Sync (02:30), Video Converter (22:00), File Matcher (23:00) and Cleanup (Sun 04:00) jobs with per-job timeouts, from /home/gomer/pythonCron/config.json.</td></tr>
+    <tr><td class="name">Client Monitor API</td><td class="tech">PHP REST · external (signcollect.nl)</td><td class="sched">HTTPS :443</td>
+        <td>Central health tracker — every service POSTs heartbeats after each run; it tracks execution stats and alerts when a service fails or misses its expected check-in.</td></tr>
+    <tr><td class="name">rclone Mount</td><td class="tech">rclone · rclone-mount.service</td><td class="sched">always on</td>
+        <td>Mounts the SharePoint "signcollect studioFiles" remote used as off-site archive (mocapFiles backup verified by File Cleanup).</td></tr>
+    <tr><td class="name">Server Monitor</td><td class="tech">systemd · server-monitor.service</td><td class="sched">always on</td>
+        <td>Local watchdog for disk space, the rclone mount and MySQL availability.</td></tr>
+  </table>
+
+  <div class="footnote">
+    Sources: code in /home/gomer/viconSync (sync_vicon_rsync.py, ftp_monitor.py, glb_matcher.py, cleanup_vicon.py, matchVicon.py, convert.py, server configs) and live systemd units on this host.
+    Daily rhythm: 22:00 video convert → 23:00 file matching → 02:30 Vicon sync → 04:00 (weekly) cleanup; FTP Monitor and the Node servers run continuously.
+  </div>
+</div>
+
+</body>
+</html>
