@@ -278,3 +278,20 @@ python3 /home/gomer/viconSync/viconFBXtoGLB.py
 - **Logs**: `/home/gomer/viconSync/logs/sync_vicon_rsync.log`
 - **Scheduler**: `/home/gomer/pythonCron/config.json`
 - **Documentation**: `/home/gomer/viconSync/README.md`
+
+## Blackmagic Mini Compressor
+
+Daily job that compresses new Blackmagic 6K clips
+(`/web/gebarenoverleg_media/studioFiles/blackmagic_files/<date>/*.mp4`) to 1080p
+HEVC "Mini" copies at `/mnt/bigstorage/blackmagic_filesMini/<date>/<name>.mp4`.
+The encode runs on monsterfish over SSH; the source masters are never modified.
+
+- Config: `monitor_config.json` → `blackmagic_mini`.
+- Schedule: `vicon-blackmagic-mini.timer` (daily 04:00, `Persistent=true`).
+- Manual run:   `python3 compress_blackmagic.py --once`
+- Preview plan: `python3 compress_blackmagic.py --dry-run`
+- Smoke test:   `python3 compress_blackmagic.py --limit 2`
+- State: `blackmagic_compress_state.json` (delete an entry to force re-encode).
+- Logs: `logs/blackmagic_mini.log`, failures in `logs/blackmagic_mini_skipped.log`.
+- A clip that fails `max_attempts` (default 5) times is parked; clear its
+  `failures` entry in the state file to retry.
