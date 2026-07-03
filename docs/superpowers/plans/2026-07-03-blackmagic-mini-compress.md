@@ -400,9 +400,9 @@ def build_plan(cfg, state):
 - [ ] **Step 4: Run to verify pass**
 
 Run: `cd /home/gomer/viconSync && python3 -m pytest tests/test_compress_blackmagic.py -v`
-Expected: 13 passed.
+Expected: 12 passed.
 
-- [ ] **Step 5: Checkpoint** — `cd /home/gomer/viconSync && python3 -m pytest -v` → 13 passed.
+- [ ] **Step 5: Checkpoint** — `cd /home/gomer/viconSync && python3 -m pytest -v` → 12 passed.
 
 ---
 
@@ -568,9 +568,9 @@ def encode_one(item, cfg, scratch_dir):
 - [ ] **Step 4: Run to verify pass**
 
 Run: `cd /home/gomer/viconSync && python3 -m pytest tests/test_compress_blackmagic.py -v`
-Expected: 17 passed.
+Expected: 16 passed.
 
-- [ ] **Step 5: Checkpoint** — `cd /home/gomer/viconSync && python3 -m pytest -v` → 17 passed.
+- [ ] **Step 5: Checkpoint** — `cd /home/gomer/viconSync && python3 -m pytest -v` → 16 passed.
 
 ---
 
@@ -815,7 +815,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run unit tests to verify pass**
 
 Run: `cd /home/gomer/viconSync && python3 -m pytest tests/test_compress_blackmagic.py -v`
-Expected: 20 passed.
+Expected: 19 passed.
 
 - [ ] **Step 5: Dry-run against the real source**
 
@@ -850,7 +850,7 @@ Expected per file: `width=1920`, `height=1080`, `codec_name=hevc`, `faststart: T
 Run `python3 compress_blackmagic.py --dry-run` again.
 Expected: `n_done` increased by 2 and those two clips are no longer in the "to encode" count (they won't be re-encoded).
 
-- [ ] **Step 8: Checkpoint** — `cd /home/gomer/viconSync && python3 -m pytest -v` → 20 passed, plus the smoke evidence above.
+- [ ] **Step 8: Checkpoint** — `cd /home/gomer/viconSync && python3 -m pytest -v` → 19 passed, plus the smoke evidence above.
 
 ---
 
