@@ -213,3 +213,21 @@ def test_run_once_dry_run_encodes_nothing(tmp_path, monkeypatch):
     stats = cb.run_once(cfg, str(tmp_path / "state.json"), dry_run=True)
     assert called["n"] == 0
     assert not os.path.exists(str(dest / "2026-06-12/new.mp4"))
+
+
+def test_main_once_dry_run_accepts_flag(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    cfg = {"blackmagic_mini": {
+        "enabled": True,
+        "source_path": str(src),
+        "dest_path": str(tmp_path / "dest"),
+        "state_file": str(tmp_path / "state.json"),
+        "max_attempts": 5,
+        "workers": 1,
+        "client_monitor": {"enabled": False},
+    }}
+    cfgp = tmp_path / "cfg.json"
+    json.dump(cfg, open(cfgp, "w"))
+    rc = cb.main(["--once", "--dry-run", "--config", str(cfgp)])
+    assert rc == 0

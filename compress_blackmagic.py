@@ -309,6 +309,8 @@ def main(argv=None):
     ap.add_argument("--config", default="monitor_config.json")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--limit", type=int)
+    ap.add_argument("--once", action="store_true",
+                    help="run a single scan then exit (the default; explicit for the systemd unit)")
     ap.add_argument("--loop", action="store_true", help="run forever, sleeping --interval between scans")
     ap.add_argument("--interval", type=int, default=86400)
     args = ap.parse_args(argv)
