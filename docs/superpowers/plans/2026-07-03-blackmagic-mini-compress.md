@@ -945,7 +945,7 @@ The encode runs on monsterfish over SSH; the source masters are never modified.
   `failures` entry in the state file to retry.
 ```
 
-- [ ] **Step 8: Checkpoint** — `systemctl list-timers vicon-blackmagic-mini.timer --all` shows the scheduled timer and `python3 -m pytest -v` still passes (19).
+- [ ] **Step 8: Checkpoint** — `systemctl list-timers vicon-blackmagic-mini.timer --all` shows the scheduled timer and `python3 -m pytest -v` still passes (20).
 
 ---
 
