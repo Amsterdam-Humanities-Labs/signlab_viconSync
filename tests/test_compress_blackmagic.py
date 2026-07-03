@@ -108,3 +108,41 @@ def test_build_plan_classifies_clips(tmp_path):
     assert plan["n_done"] == 1
     assert plan["n_parked"] == 1
     assert plan["n_unreadable"] == 1
+
+
+def _enc_cfg():
+    return {"encode": {"ssh_host": "monsterfish", "scale_width": 1920,
+                       "scale_height": 1080, "codec": "libx265",
+                       "crf": 26, "preset": "fast"}}
+
+
+def test_remote_ffmpeg_cmd_has_scale_codec_crf_and_fragmented_mp4():
+    cmd = cb.remote_ffmpeg_cmd(_enc_cfg(), ["-c:a", "copy"])
+    assert "scale=1920:1080" in cmd
+    assert "-c:v libx265" in cmd
+    assert "-crf 26" in cmd
+    assert "-preset fast" in cmd
+    assert "-c:a copy" in cmd
+    assert "frag_keyframe" in cmd and "-f mp4 -" in cmd
+    assert cmd.strip().startswith("ffmpeg")
+
+
+def test_remote_ffmpeg_cmd_aac_fallback_args():
+    cmd = cb.remote_ffmpeg_cmd(_enc_cfg(), ["-c:a", "aac", "-b:a", "128k"])
+    assert "-c:a aac -b:a 128k" in cmd
+
+
+def test_ssh_argv_targets_host_with_batchmode():
+    argv = cb.ssh_argv(_enc_cfg(), "ffmpeg -i - ...")
+    assert argv[0] == "ssh"
+    assert "monsterfish" in argv
+    assert "BatchMode=yes" in argv
+    assert argv[-1] == "ffmpeg -i - ..."
+
+
+def test_remux_faststart_argv():
+    argv = cb.remux_faststart_argv("/t/frag.mp4", "/t/out.mp4")
+    assert argv[:3] == ["ffmpeg", "-hide_banner", "-v"]
+    assert "-movflags" in argv and "+faststart" in argv
+    assert argv[-1] == "/t/out.mp4"
+    assert "/t/frag.mp4" in argv
