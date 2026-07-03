@@ -170,6 +170,7 @@ def test_run_once_encodes_pending_and_records_state(tmp_path, monkeypatch):
         return True, ""
 
     monkeypatch.setattr(cb, "encode_one", fake_encode_one)
+    monkeypatch.setattr(cb, "preflight_ssh", lambda cfg: (True, "ok"))
     stats = cb.run_once(cfg, state_path)
     assert stats["ok"] == 1 and stats["err"] == 0
     assert os.path.exists(str(dest / "2026-06-12/new.mp4"))
@@ -190,6 +191,7 @@ def test_run_once_increments_failures_on_error(tmp_path, monkeypatch):
     }
     state_path = str(tmp_path / "state.json")
     monkeypatch.setattr(cb, "encode_one", lambda i, c, s: (False, "boom"))
+    monkeypatch.setattr(cb, "preflight_ssh", lambda cfg: (True, "ok"))
     stats = cb.run_once(cfg, state_path)
     assert stats["err"] == 1
     saved = cb.load_state(state_path)
