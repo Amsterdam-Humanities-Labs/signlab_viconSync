@@ -231,3 +231,68 @@ def test_main_once_dry_run_accepts_flag(tmp_path):
     json.dump(cfg, open(cfgp, "w"))
     rc = cb.main(["--once", "--dry-run", "--config", str(cfgp)])
     assert rc == 0
+
+
+class _FakeMonitor:
+    def __init__(self):
+        self.beats = []
+
+    def register(self):
+        pass
+
+    def send_heartbeat_with_stats(self, status, message, stats):
+        self.beats.append((status, message, stats))
+
+
+def test_run_once_heartbeat_fires_when_no_items(tmp_path, monkeypatch):
+    src = tmp_path / "src"
+    src.mkdir()
+    dest = tmp_path / "dest"
+    cfg = {
+        "source_path": str(src), "dest_path": str(dest), "max_attempts": 5,
+        "workers": 1,
+        "encode": {"ssh_host": "monsterfish", "scale_width": 1920,
+                   "scale_height": 1080, "codec": "libx265", "crf": 26, "preset": "fast"},
+        "client_monitor": {"enabled": True, "api_url": "http://x", "client_id": "c",
+                           "client_name": "n"},
+    }
+    fake = _FakeMonitor()
+    monkeypatch.setattr(cb, "_make_monitor", lambda c: fake)
+    state_path = str(tmp_path / "state.json")
+
+    stats = cb.run_once(cfg, state_path)
+
+    assert stats["ok"] == 0 and stats["err"] == 0
+    assert len(fake.beats) == 1
+    status, message, beat_stats = fake.beats[0]
+    assert status == "success"
+    assert beat_stats is stats
+
+
+def test_run_once_heartbeat_error_on_preflight_failure(tmp_path, monkeypatch):
+    src = tmp_path / "src"
+    dest = tmp_path / "dest"
+    _touch(str(src / "2026-06-12/new.mp4"), content=b"abcd")
+    cfg = {
+        "source_path": str(src), "dest_path": str(dest), "max_attempts": 5,
+        "workers": 1,
+        "encode": {"ssh_host": "monsterfish", "scale_width": 1920,
+                   "scale_height": 1080, "codec": "libx265", "crf": 26, "preset": "fast"},
+        "client_monitor": {"enabled": True, "api_url": "http://x", "client_id": "c",
+                           "client_name": "n"},
+    }
+    fake = _FakeMonitor()
+    monkeypatch.setattr(cb, "_make_monitor", lambda c: fake)
+    monkeypatch.setattr(cb, "preflight_ssh", lambda c: (False, "boom"))
+    encode_calls = {"n": 0}
+    monkeypatch.setattr(cb, "encode_one",
+                        lambda i, c, s: encode_calls.__setitem__("n", encode_calls["n"] + 1) or (True, ""))
+    state_path = str(tmp_path / "state.json")
+
+    stats = cb.run_once(cfg, state_path)
+
+    assert encode_calls["n"] == 0
+    assert len(fake.beats) == 1
+    status, message, beat_stats = fake.beats[0]
+    assert status == "error"
+    assert "boom" in message

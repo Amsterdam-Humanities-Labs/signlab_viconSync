@@ -15,6 +15,7 @@ Resumable via blackmagic_compress_state.json. Runs one scan per invocation
 (--once, the default, driven by the systemd timer); --loop is for manual use.
 """
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -27,7 +28,7 @@ logger = logging.getLogger("blackmagic_mini")
 
 SSH_OPTS = [
     "-o", "BatchMode=yes",
-    "-o", "StrictHostKeyChecking=no",
+    "-o", "StrictHostKeyChecking=accept-new",
     "-o", "ControlMaster=auto",
     "-o", "ControlPath=/tmp/bm_mini_ssh_%C",
     "-o", "ControlPersist=300",
@@ -153,7 +154,9 @@ def _run_remote_encode(src, frag_out, cfg, audio_args):
 
 
 def _uniq(rel):
-    return rel.replace("/", "_").replace(" ", "_")
+    h = hashlib.sha1(rel.encode("utf-8")).hexdigest()[:8]
+    safe = rel.replace("/", "_").replace(" ", "_")
+    return f"{safe}.{h}"
 
 
 def encode_one(item, cfg, scratch_dir):
@@ -226,6 +229,17 @@ def _make_monitor(cfg):
         return None
 
 
+def _emit_heartbeat(cfg, status, message, stats):
+    monitor = _make_monitor(cfg)
+    if monitor is None:
+        return
+    try:
+        monitor.register()
+        monitor.send_heartbeat_with_stats(status, message, stats)
+    except Exception as exc:  # noqa: BLE001 - monitoring is best-effort
+        logger.warning("heartbeat failed: %r", exc)
+
+
 def run_once(cfg, state_path, limit=None, dry_run=False):
     state = load_state(state_path)
     plan = build_plan(cfg, state)
@@ -234,51 +248,51 @@ def run_once(cfg, state_path, limit=None, dry_run=False):
                 len(items), plan["n_done"], plan["n_parked"], plan["n_unreadable"])
     stats = {"ok": 0, "err": 0, "n_done": plan["n_done"], "n_parked": plan["n_parked"],
              "n_unreadable": plan["n_unreadable"], "attempted": len(items)}
-    if dry_run or not items:
+    if dry_run:
         for it in items:
             logger.info("[DRY] would encode %s", it["rel"])
         return stats
 
-    ok, msg = preflight_ssh(cfg)
-    if not ok:
-        logger.error("preflight failed: %s", msg)
-        return stats
+    status, message = "success", "no new clips"
+    try:
+        if items:
+            ok, msg = preflight_ssh(cfg)
+            if not ok:
+                logger.error("preflight failed: %s", msg)
+                status, message = "error", f"preflight failed: {msg}"
+                return stats
 
-    scratch = scratch_dir_for(cfg)
-    lock = threading.Lock()
+            scratch = scratch_dir_for(cfg)
+            lock = threading.Lock()
 
-    def work(it):
-        good, err = encode_one(it, cfg, scratch)
-        with lock:
-            if good:
-                sig = source_sig(it["src"])
-                if sig is not None:
-                    state["done"][it["rel"]] = [sig[0], sig[1]]
-                state["failures"].pop(it["rel"], None)
-                stats["ok"] += 1
-                logger.info("OK  %s", it["rel"])
-            else:
-                state["failures"][it["rel"]] = state["failures"].get(it["rel"], 0) + 1
-                stats["err"] += 1
-                logger.warning("FAIL %s (attempt %d): %s",
-                               it["rel"], state["failures"][it["rel"]], err)
-                _log_skip(cfg, it["rel"], err)
+            def work(it):
+                good, err = encode_one(it, cfg, scratch)
+                sig = source_sig(it["src"]) if good else None
+                with lock:
+                    if good:
+                        if sig is not None:
+                            state["done"][it["rel"]] = [sig[0], sig[1]]
+                        state["failures"].pop(it["rel"], None)
+                        stats["ok"] += 1
+                        logger.info("OK  %s", it["rel"])
+                    else:
+                        state["failures"][it["rel"]] = state["failures"].get(it["rel"], 0) + 1
+                        stats["err"] += 1
+                        logger.warning("FAIL %s (attempt %d): %s",
+                                       it["rel"], state["failures"][it["rel"]], err)
+                        _log_skip(cfg, it["rel"], err)
+                    save_state(state_path, state)
+
+            with ThreadPoolExecutor(max_workers=cfg.get("workers", 3)) as ex:
+                for _ in as_completed([ex.submit(work, it) for it in items]):
+                    pass
             save_state(state_path, state)
 
-    with ThreadPoolExecutor(max_workers=cfg.get("workers", 3)) as ex:
-        for _ in as_completed([ex.submit(work, it) for it in items]):
-            pass
-    save_state(state_path, state)
-
-    monitor = _make_monitor(cfg)
-    if monitor is not None:
-        try:
-            monitor.register()
-            status = "success" if stats["err"] == 0 else "warning"
-            monitor.send_heartbeat_with_stats(
-                status, f"encoded {stats['ok']}, failed {stats['err']}", stats)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("heartbeat failed: %r", exc)
+            if stats["err"]:
+                status = "warning"
+            message = f"encoded {stats['ok']}, failed {stats['err']}"
+    finally:
+        _emit_heartbeat(cfg, status, message, stats)
     return stats
 
 
