@@ -1,4 +1,6 @@
 import json
+import os
+
 import compress_blackmagic as cb
 
 
@@ -146,3 +148,68 @@ def test_remux_faststart_argv():
     assert "-movflags" in argv and "+faststart" in argv
     assert argv[-1] == "/t/out.mp4"
     assert "/t/frag.mp4" in argv
+
+
+def test_run_once_encodes_pending_and_records_state(tmp_path, monkeypatch):
+    src = tmp_path / "src"
+    dest = tmp_path / "dest"
+    _touch(str(src / "2026-06-12/new.mp4"), content=b"abcd")
+    cfg = {
+        "source_path": str(src), "dest_path": str(dest), "max_attempts": 5,
+        "workers": 1,
+        "encode": {"ssh_host": "monsterfish", "scale_width": 1920,
+                   "scale_height": 1080, "codec": "libx265", "crf": 26, "preset": "fast"},
+        "client_monitor": {"enabled": False},
+    }
+    state_path = str(tmp_path / "state.json")
+
+    def fake_encode_one(item, c, scratch):
+        os.makedirs(os.path.dirname(item["dest"]), exist_ok=True)
+        with open(item["dest"], "wb") as f:
+            f.write(b"mini")
+        return True, ""
+
+    monkeypatch.setattr(cb, "encode_one", fake_encode_one)
+    stats = cb.run_once(cfg, state_path)
+    assert stats["ok"] == 1 and stats["err"] == 0
+    assert os.path.exists(str(dest / "2026-06-12/new.mp4"))
+    saved = cb.load_state(state_path)
+    assert "2026-06-12/new.mp4" in saved["done"]
+
+
+def test_run_once_increments_failures_on_error(tmp_path, monkeypatch):
+    src = tmp_path / "src"
+    dest = tmp_path / "dest"
+    _touch(str(src / "2026-06-12/bad.mp4"), content=b"abcd")
+    cfg = {
+        "source_path": str(src), "dest_path": str(dest), "max_attempts": 5,
+        "workers": 1,
+        "encode": {"ssh_host": "monsterfish", "scale_width": 1920,
+                   "scale_height": 1080, "codec": "libx265", "crf": 26, "preset": "fast"},
+        "client_monitor": {"enabled": False},
+    }
+    state_path = str(tmp_path / "state.json")
+    monkeypatch.setattr(cb, "encode_one", lambda i, c, s: (False, "boom"))
+    stats = cb.run_once(cfg, state_path)
+    assert stats["err"] == 1
+    saved = cb.load_state(state_path)
+    assert saved["failures"]["2026-06-12/bad.mp4"] == 1
+    assert "2026-06-12/bad.mp4" not in saved["done"]
+
+
+def test_run_once_dry_run_encodes_nothing(tmp_path, monkeypatch):
+    src = tmp_path / "src"
+    dest = tmp_path / "dest"
+    _touch(str(src / "2026-06-12/new.mp4"), content=b"abcd")
+    cfg = {
+        "source_path": str(src), "dest_path": str(dest), "max_attempts": 5,
+        "workers": 1,
+        "encode": {"ssh_host": "monsterfish", "scale_width": 1920,
+                   "scale_height": 1080, "codec": "libx265", "crf": 26, "preset": "fast"},
+        "client_monitor": {"enabled": False},
+    }
+    called = {"n": 0}
+    monkeypatch.setattr(cb, "encode_one", lambda i, c, s: called.__setitem__("n", called["n"] + 1) or (True, ""))
+    stats = cb.run_once(cfg, str(tmp_path / "state.json"), dry_run=True)
+    assert called["n"] == 0
+    assert not os.path.exists(str(dest / "2026-06-12/new.mp4"))
