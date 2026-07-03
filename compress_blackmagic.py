@@ -71,3 +71,32 @@ def source_sig(abs_path):
     if st.st_size <= 0:
         return None
     return (st.st_mtime, st.st_size)
+
+
+def is_done(rel, sig, dest_root, state):
+    recorded = state["done"].get(rel)
+    if recorded is None or list(recorded) != [sig[0], sig[1]]:
+        return False
+    return os.path.exists(dest_path_for(rel, dest_root))
+
+
+def build_plan(cfg, state):
+    src_root = cfg["source_path"]
+    dest_root = cfg["dest_path"]
+    max_attempts = cfg["max_attempts"]
+    items, n_done, n_parked, n_unreadable = [], 0, 0, 0
+    for rel in iter_source_clips(src_root):
+        src = os.path.join(src_root, rel)
+        sig = source_sig(src)
+        if sig is None:
+            n_unreadable += 1
+            continue
+        if is_done(rel, sig, dest_root, state):
+            n_done += 1
+            continue
+        if state["failures"].get(rel, 0) >= max_attempts:
+            n_parked += 1
+            continue
+        items.append({"rel": rel, "src": src, "dest": dest_path_for(rel, dest_root)})
+    return {"items": items, "n_done": n_done, "n_parked": n_parked,
+            "n_unreadable": n_unreadable}

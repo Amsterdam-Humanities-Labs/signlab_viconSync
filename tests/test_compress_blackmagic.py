@@ -58,3 +58,53 @@ def test_source_sig_returns_mtime_size(tmp_path):
     _touch(p, content=b"abcde")
     sig = cb.source_sig(p)
     assert sig is not None and sig[1] == 5
+
+
+def _cfg(src, dest, max_attempts=5):
+    return {"source_path": src, "dest_path": dest, "max_attempts": max_attempts}
+
+
+def test_is_done_true_when_sig_matches_and_dest_exists(tmp_path):
+    dest = tmp_path / "dest"
+    _touch(str(dest / "2026-06-12/a.mp4"))
+    state = {"done": {"2026-06-12/a.mp4": [10.0, 5]}, "failures": {}}
+    assert cb.is_done("2026-06-12/a.mp4", (10.0, 5), str(dest), state) is True
+
+
+def test_is_done_false_when_dest_missing(tmp_path):
+    state = {"done": {"2026-06-12/a.mp4": [10.0, 5]}, "failures": {}}
+    assert cb.is_done("2026-06-12/a.mp4", (10.0, 5), str(tmp_path / "dest"), state) is False
+
+
+def test_is_done_false_when_sig_changed(tmp_path):
+    dest = tmp_path / "dest"
+    _touch(str(dest / "2026-06-12/a.mp4"))
+    state = {"done": {"2026-06-12/a.mp4": [10.0, 5]}, "failures": {}}
+    assert cb.is_done("2026-06-12/a.mp4", (99.0, 5), str(dest), state) is False
+
+
+def test_build_plan_classifies_clips(tmp_path):
+    src = tmp_path / "src"
+    dest = tmp_path / "dest"
+    # done clip (dest exists + sig recorded)
+    _touch(str(src / "2026-06-12/done.mp4"), content=b"abc")
+    _touch(str(dest / "2026-06-12/done.mp4"))
+    # fresh clip to encode
+    _touch(str(src / "2026-06-12/new.mp4"), content=b"abcd")
+    # parked clip (too many failures)
+    _touch(str(src / "2026-06-12/bad.mp4"), content=b"ab")
+    # unreadable clip (zero-byte)
+    _touch(str(src / "2026-06-12/empty.mp4"), content=b"")
+
+    done_sig = list(cb.source_sig(str(src / "2026-06-12/done.mp4")))
+    state = {
+        "done": {"2026-06-12/done.mp4": done_sig},
+        "failures": {"2026-06-12/bad.mp4": 5},
+    }
+    plan = cb.build_plan(_cfg(str(src), str(dest)), state)
+    assert [i["rel"] for i in plan["items"]] == ["2026-06-12/new.mp4"]
+    assert plan["items"][0]["src"] == str(src / "2026-06-12/new.mp4")
+    assert plan["items"][0]["dest"] == str(dest / "2026-06-12/new.mp4")
+    assert plan["n_done"] == 1
+    assert plan["n_parked"] == 1
+    assert plan["n_unreadable"] == 1
