@@ -45,3 +45,29 @@ def save_state(path, state):
     with open(tmp, "w") as f:
         json.dump(state, f, indent=0, sort_keys=True)
     os.replace(tmp, path)
+
+
+def iter_source_clips(source_path):
+    """Sorted list of '<date>/<name>.mp4' relative paths under source_path."""
+    rels = []
+    for dirpath, _dirs, files in os.walk(source_path):
+        for name in files:
+            if name.lower().endswith(".mp4"):
+                abspath = os.path.join(dirpath, name)
+                rels.append(os.path.relpath(abspath, source_path))
+    return sorted(rels)
+
+
+def dest_path_for(rel, dest_root):
+    return os.path.join(dest_root, rel)
+
+
+def source_sig(abs_path):
+    """(mtime, size) or None if missing/unreadable/zero-byte."""
+    try:
+        st = os.stat(abs_path)
+    except OSError:
+        return None
+    if st.st_size <= 0:
+        return None
+    return (st.st_mtime, st.st_size)
