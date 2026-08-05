@@ -359,7 +359,16 @@ class ViconSync:
         logger.info(f"  Running batch PowerShell operation for {len(date_dirs)} date directories...")
         stdout, returncode = self.ssh_execute(ps_cmd, timeout=300)
 
-        if returncode != 0 or not stdout.strip():
+        if returncode != 0:
+            # A failed call is distinct from a successful call that matched
+            # nothing. This is the primary enumeration path, so returning an
+            # empty dict silently would make a sync that downloaded nothing
+            # report success. Count it as a sync error.
+            logger.error(f"  Batch operation failed (rc={returncode}) for {base_path}")
+            self.stats['errors'] += 1
+            return {}
+
+        if not stdout.strip():
             logger.warning(f"  Batch operation returned no results")
             return {}
 
@@ -456,6 +465,11 @@ class ViconSync:
         stdout, returncode = self.ssh_execute(f'dir "{remote_path}" /B /AD')
 
         if returncode != 0:
+            # A failed listing is distinct from a date directory that is
+            # genuinely empty; only the former is a sync error. Returning []
+            # without a trace is how a broken run looked like a clean one.
+            logger.error(f"Failed to list recording directories in {remote_path}")
+            self.stats['errors'] += 1
             return []
 
         # Parse directory names
@@ -717,7 +731,15 @@ class ViconSync:
         logger.info(f"  Running batch scan for {subdir} ({', '.join(extensions)})...")
         stdout, returncode = self.ssh_execute(ps_cmd, timeout=300)
 
-        if returncode != 0 or not stdout.strip():
+        if returncode != 0:
+            # An SSH/PowerShell failure was previously reported at INFO level as
+            # a benign "no files found". It is a failed call, not an empty
+            # result, so it has to count against the cycle.
+            logger.error(f"  Failed to scan {subdir} in {base_path} (rc={returncode})")
+            self.stats['errors'] += 1
+            return
+
+        if not stdout.strip():
             logger.info(f"  No {subdir} files found")
             return
 
