@@ -17,6 +17,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple, Any
 from pathlib import Path
 
+import vicon_host
+
 try:
     from db_writer import DatabaseWriter
     DB_AVAILABLE = True
@@ -192,9 +194,16 @@ class FtpConnectionManager:
 
         while retry_count < max_retries:
             try:
-                self.logger.info(f"Connecting to FTP server {self.config['ftp']['host']}...")
+                # The Vicon PC changes tailnet address when it rejoins, so
+                # resolve on every attempt rather than trusting a fixed host.
+                host, node_name = vicon_host.resolve_vicon_host(
+                    prefix=self.config['ftp'].get('host_prefix', vicon_host.DEFAULT_PREFIX),
+                    probe_port=21,
+                    timeout=self.config['ftp']['timeout'],
+                )
+                self.logger.info(f"Connecting to FTP server {node_name} at {host}...")
                 self.ftp = FTP(timeout=self.config['ftp']['timeout'])
-                self.ftp.connect(self.config['ftp']['host'])
+                self.ftp.connect(host)
                 self.ftp.login(self.config['ftp']['user'], self.config['ftp']['password'])
                 self.logger.info("FTP connected successfully")
                 self.connection_attempts = 0
@@ -796,7 +805,7 @@ class ViconFtpMonitor:
                 self.client_monitor.register({
                     "hostname": socket.gethostname(),
                     "python_version": sys.version.split()[0],
-                    "ftp_host": self.config['ftp']['host']
+                    "ftp_host": self.config['ftp'].get('host_prefix', vicon_host.DEFAULT_PREFIX)
                 })
             except Exception as e:
                 self.logger = logging.getLogger(__name__)
@@ -899,7 +908,7 @@ class ViconFtpMonitor:
         output = {
             'metadata': {
                 'last_update': datetime.now().isoformat(),
-                'ftp_host': self.config['ftp']['host'],
+                'ftp_host': self.config['ftp'].get('host_prefix', vicon_host.DEFAULT_PREFIX),
                 'monitoring_started': self.monitoring_started,
                 'total_captures': len(captures),
                 'total_files': len(self.state_manager.state['known_files'])

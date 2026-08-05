@@ -1,6 +1,6 @@
 {
   "ftp": {
-    "host": "100.83.229.92",
+    "host_prefix": "vicon",
     "user": "vicon",
     "password": "CHANGE_ME",
     "timeout": 10,
