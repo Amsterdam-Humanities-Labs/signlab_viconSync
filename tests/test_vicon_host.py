@@ -1,5 +1,7 @@
 import json
 import subprocess
+import threading
+import time
 
 import pytest
 
@@ -255,3 +257,30 @@ def test_cached_keys_on_probe_port(monkeypatch):
     vicon_host.resolve_vicon_host_cached(probe_port=22)
     vicon_host.resolve_vicon_host_cached(probe_port=21)
     assert ports == [22, 21]
+
+
+def test_cached_single_flight_under_concurrency(monkeypatch):
+    vicon_host._clear_cache()
+    calls = []
+    results = []
+
+    def slow_resolve(**kw):
+        calls.append(1)
+        time.sleep(0.05)
+        return ("100.111.64.24", "vicon-sb001869-1")
+
+    monkeypatch.setattr(vicon_host, "resolve_vicon_host", slow_resolve)
+
+    def caller():
+        result = vicon_host.resolve_vicon_host_cached()
+        results.append(result)
+
+    threads = [threading.Thread(target=caller) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(calls) == 1, f"Expected 1 call, got {len(calls)}"
+    assert len(results) == 2
+    assert results[0] == results[1]

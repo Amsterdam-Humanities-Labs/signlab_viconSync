@@ -10,6 +10,7 @@ therefore breaks on the next rejoin, so we scan for the node instead.
 import json
 import socket
 import subprocess
+import threading
 import time
 
 TAILSCALE_BIN = "tailscale"
@@ -129,6 +130,7 @@ def resolve_vicon_host(prefix=DEFAULT_PREFIX, probe_port=22, timeout=10):
 
 
 _CACHE = {}  # (prefix, probe_port) -> (timestamp, (ip, label))
+_LOCK = threading.Lock()
 
 
 def resolve_vicon_host_cached(prefix=DEFAULT_PREFIX, probe_port=22,
@@ -139,14 +141,16 @@ def resolve_vicon_host_cached(prefix=DEFAULT_PREFIX, probe_port=22,
     never reported as live for longer than a single call.
     """
     key = (prefix, probe_port)
-    now = time.time()
-    hit = _CACHE.get(key)
-    if hit and now - hit[0] < ttl:
-        return hit[1]
-    value = resolve_vicon_host(prefix=prefix, probe_port=probe_port, timeout=timeout)
-    _CACHE[key] = (now, value)
-    return value
+    with _LOCK:
+        now = time.time()
+        hit = _CACHE.get(key)
+        if hit and now - hit[0] < ttl:
+            return hit[1]
+        value = resolve_vicon_host(prefix=prefix, probe_port=probe_port, timeout=timeout)
+        _CACHE[key] = (now, value)
+        return value
 
 
 def _clear_cache():
-    _CACHE.clear()
+    with _LOCK:
+        _CACHE.clear()
