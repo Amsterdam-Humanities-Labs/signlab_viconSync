@@ -18,10 +18,36 @@ python3 sync_vicon_rsync.py --dry-run
 python3 sync_vicon_rsync.py --help
 ```
 
+## Finding the Vicon PC
+
+The Vicon PC gets a new tailnet address every time Windows is reinstalled, so
+nothing in this repo stores one. `vicon_host.py` resolves it at runtime and the
+scripts call it on every start. Run the same lookup yourself before any manual
+`ssh`, `ping` or `nc` — never reuse an address from an old log or ticket:
+
+```bash
+cd /home/gomer/viconSync
+python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22))"
+```
+
+- Prints `('<ip>', '<node-name>')` — that is the live address, and the port is
+  confirmed open, so a working answer here already rules out "PC down" and
+  "SSH not listening".
+- Raises `ViconOffline` — the message names every known `vicon*` peer and when
+  it was last seen. The PC is off, asleep, or not on the tailnet; there is
+  nothing to ssh to and no address to try.
+
+Most commands below start by capturing that address:
+```bash
+VICON=$(python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22)[0])")
+```
+
 ## What It Does
 
 The sync script:
-1. Connects to the Vicon system at `100.83.229.92` via SSH
+1. Looks up the Vicon PC's current address on the tailnet (`vicon_host.py`) and
+   connects to it via SSH. The address is never hardcoded — it changes every
+   time the PC rejoins the tailnet. See [Finding the Vicon PC](#finding-the-vicon-pc).
 2. Syncs from **two sources** in order:
    - **E:\Recordings**: Raw Vicon exports (files in `*/*/unreal/` subdirectories)
    - **D:\PostExports\FBX**: Post-processed files (~20,673 FBX files directly in date directories)
@@ -118,19 +144,27 @@ du -sh /web/gebarenoverleg_media/fbx/
 ## Troubleshooting
 
 ### Script Won't Connect to Vicon
-**Symptom**: "Failed to list date directories" or SSH connection errors
+**Symptom**: "Failed to list date directories", "Vicon PC unreachable", or SSH
+connection errors
 
 **Solution**:
 ```bash
-# Test SSH connection manually
-sshpass -p 'CHANGE_ME' ssh vicon@100.83.229.92 "echo Connection OK"
+cd /home/gomer/viconSync
 
-# If this fails, check:
-# 1. Is the Vicon system online?
-ping 100.83.229.92
+# 1. Can we find the Vicon PC at all? (This also probes port 22.)
+python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22))"
+```
 
-# 2. Is SSH server running on Vicon?
-nc -zv 100.83.229.92 22
+If that raises `ViconOffline`, the PC is not reachable on the tailnet and there
+is nothing further to test locally — check that the machine is powered on and
+that Tailscale is running on it. The exception message lists each known `vicon*`
+peer with its last-seen time.
+
+If it prints an address, discovery and SSH-port reachability are both fine, so
+test the login itself:
+```bash
+VICON=$(python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22)[0])")
+sshpass -p 'CHANGE_ME' ssh vicon@"$VICON" "echo Connection OK"
 ```
 
 ### Rsync Fails
@@ -138,10 +172,13 @@ nc -zv 100.83.229.92 22
 
 **Solution**:
 ```bash
+cd /home/gomer/viconSync
+VICON=$(python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22)[0])")
+
 # Test rsync manually with a known file
 rsync -avz --dry-run \
   -e "sshpass -p 'CHANGE_ME' ssh -o StrictHostKeyChecking=no" \
-  vicon@100.83.229.92:/e/Recordings/2026-01-14/M20251216_8568_260114_0/unreal/*.fbx \
+  vicon@"$VICON":/e/Recordings/2026-01-14/M20251216_8568_260114_0/unreal/*.fbx \
   /web/gebarenoverleg_media/fbx/
 
 # Check if sshpass is installed
@@ -171,11 +208,14 @@ df -h /web/gebarenoverleg_media/fbx/
 
 **Solution**:
 ```bash
+cd /home/gomer/viconSync
+VICON=$(python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22)[0])")
+
 # Check remote directory manually
-sshpass -p 'CHANGE_ME' ssh vicon@100.83.229.92 "dir E:\\Recordings"
+sshpass -p 'CHANGE_ME' ssh vicon@"$VICON" "dir E:\\Recordings"
 
 # Check if files exist in a known recording
-sshpass -p 'CHANGE_ME' ssh vicon@100.83.229.92 "dir E:\\Recordings\\2026-01-14\\M20251216_8568_260114_0\\unreal"
+sshpass -p 'CHANGE_ME' ssh vicon@"$VICON" "dir E:\\Recordings\\2026-01-14\\M20251216_8568_260114_0\\unreal"
 ```
 
 ### Sync Is Slow
@@ -274,7 +314,7 @@ python3 /home/gomer/viconSync/viconFBXtoGLB.py
 
 ## Support Files
 
-- **Configuration**: `/home/gomer/viconSync/sync_vicon_rsync.py` (edit SSH_* and LOCAL_PATH variables)
+- **Configuration**: `/home/gomer/viconSync/sync_vicon_rsync.py` (edit `SSH_USER`, `SSH_PASS` and `LOCAL_PATH`; the host is not configured here — see `vicon_host.py`)
 - **Logs**: `/home/gomer/viconSync/logs/sync_vicon_rsync.log`
 - **Scheduler**: `/home/gomer/pythonCron/config.json`
 - **Documentation**: `/home/gomer/viconSync/README.md`

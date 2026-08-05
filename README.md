@@ -3,15 +3,38 @@
 ## Overview
 This directory contains scripts for synchronizing motion capture files from the Vicon system to local storage.
 
+## Host Discovery
+
+The Vicon PC's address is **not** configured anywhere. It rejoins the tailnet
+under a new node identity (and a new `100.x` address) after every Windows
+reinstall, so `vicon_host.py` looks it up at runtime: it reads
+`tailscale status --json`, picks the online `vicon*` peer with the newest
+rejoin suffix, and TCP-probes the port it needs (22 for SSH, 21 for FTP).
+
+Every consumer — `sync_vicon_rsync.py`, `ftp_monitor.py`, `cleanup_vicon.py`
+and `resync_fbx.py` — resolves through it. If no `vicon*` peer answers, they
+raise/report `ViconOffline` instead of hanging on a dead address.
+
+Ask it where the Vicon PC is right now:
+```bash
+cd /home/gomer/viconSync
+python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22))"
+```
+It prints `('<ip>', '<node-name>')`, or raises `ViconOffline` naming each known
+peer and when it was last seen. **Use this before any manual `ssh`/`ping`/`nc`
+against the Vicon PC** — an address copied from an old log or ticket is very
+likely dead.
+
 ## Current Scripts
 
 ### `sync_vicon_rsync.py` (PRIMARY)
 Main sync script using SSH/SCP protocol.
 
 - **Protocol**: SCP over SSH (secure, encrypted)
+- **Host**: resolved at runtime via `vicon_host.py` (see [Host Discovery](#host-discovery)); below, `$VICON` stands for whatever address it returns
 - **Sources**:
-  - `vicon@100.83.229.92:E:\Recordings` (raw Vicon exports, ~21 date directories)
-  - `vicon@100.83.229.92:D:\PostExports\FBX` (post-processed files, ~20,000+ files in 22 date directories)
+  - `vicon@$VICON:E:\Recordings` (raw Vicon exports, ~21 date directories)
+  - `vicon@$VICON:D:\PostExports\FBX` (post-processed files, ~20,000+ files in 22 date directories)
 - **Target**: `/web/gebarenoverleg_media/fbx/`
 - **File Types**: FBX and GLB files
 - **Features**:
@@ -139,7 +162,8 @@ tail -f /home/gomer/viconSync/logs/sync_vicon_rsync.log
 
 Edit the configuration section in `sync_vicon_rsync.py`:
 ```python
-SSH_HOST = "100.83.229.92"
+# No host constant: the address comes from vicon_host.resolve_vicon_host()
+# at startup (see "Host Discovery" above) and is passed to ViconSync(host=...).
 SSH_USER = "vicon"
 SSH_PASS = "CHANGE_ME"
 
@@ -176,8 +200,15 @@ To disable monitoring, set `CLIENT_MONITOR_API_URL` to an empty string or remove
 
 ### SSH Connection Issues
 ```bash
-# Test SSH connection manually
-sshpass -p 'CHANGE_ME' ssh vicon@100.83.229.92 "echo Connection successful"
+cd /home/gomer/viconSync
+
+# First: where is the Vicon PC right now? This is the same lookup the scripts do.
+python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22))"
+
+# If that raises ViconOffline, the PC is down or off the tailnet — stop here.
+# Otherwise test SSH manually against the address it just resolved:
+VICON=$(python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22)[0])")
+sshpass -p 'CHANGE_ME' ssh vicon@"$VICON" "echo Connection successful"
 
 # Check SSH keys
 ls -la ~/.ssh/
@@ -185,10 +216,13 @@ ls -la ~/.ssh/
 
 ### Rsync Issues
 ```bash
+cd /home/gomer/viconSync
+VICON=$(python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22)[0])")
+
 # Test rsync manually with a single file
 rsync -avz --dry-run \
   -e "sshpass -p 'CHANGE_ME' ssh -o StrictHostKeyChecking=no" \
-  vicon@100.83.229.92:/e/Recordings/2026-01-14/M20251216_8568_260114_0/unreal/*.fbx \
+  vicon@"$VICON":/e/Recordings/2026-01-14/M20251216_8568_260114_0/unreal/*.fbx \
   /web/gebarenoverleg_media/fbx/
 ```
 
