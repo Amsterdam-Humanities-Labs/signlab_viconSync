@@ -60,3 +60,26 @@ def test_connect_returns_false_when_vicon_offline(monkeypatch):
 def test_config_has_no_hardcoded_ip():
     source = open("monitor_config.json").read()
     assert "100.83.229.92" not in source
+
+
+def test_connect_stores_resolved_host_on_success(monkeypatch):
+    monkeypatch.setattr(ftp_monitor, "FTP", FakeFTP)
+    monkeypatch.setattr(
+        ftp_monitor.vicon_host, "resolve_vicon_host",
+        lambda **kw: ("100.111.64.24", "vicon-sb001869-1"),
+    )
+    mgr = ftp_monitor.FtpConnectionManager(make_config())
+    assert mgr.connect() is True
+    assert mgr.host == "100.111.64.24"
+    assert mgr.node_name == "vicon-sb001869-1"
+
+
+def test_connect_leaves_host_none_when_offline(monkeypatch):
+    def boom(**kw):
+        raise vicon_host.ViconOffline("no vicon* peer online")
+
+    monkeypatch.setattr(ftp_monitor.vicon_host, "resolve_vicon_host", boom)
+    mgr = ftp_monitor.FtpConnectionManager(make_config())
+    assert mgr.connect() is False
+    assert mgr.host is None
+    assert mgr.node_name is None

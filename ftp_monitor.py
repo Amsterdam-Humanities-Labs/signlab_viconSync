@@ -183,6 +183,8 @@ class FtpConnectionManager:
         self.ftp: Optional[FTP] = None
         self.last_operation = time.time()
         self.connection_attempts = 0
+        self.host: Optional[str] = None
+        self.node_name: Optional[str] = None
         self.logger = logging.getLogger(__name__)
 
     def connect(self) -> bool:
@@ -207,6 +209,8 @@ class FtpConnectionManager:
                 self.ftp.login(self.config['ftp']['user'], self.config['ftp']['password'])
                 self.logger.info("FTP connected successfully")
                 self.connection_attempts = 0
+                self.host = host
+                self.node_name = node_name
                 self.last_operation = time.time()
                 return True
             except Exception as e:
@@ -805,7 +809,7 @@ class ViconFtpMonitor:
                 self.client_monitor.register({
                     "hostname": socket.gethostname(),
                     "python_version": sys.version.split()[0],
-                    "ftp_host": self.config['ftp'].get('host_prefix', vicon_host.DEFAULT_PREFIX)
+                    "ftp_host": self.ftp_manager.host or self.config['ftp'].get('host_prefix', vicon_host.DEFAULT_PREFIX)
                 })
             except Exception as e:
                 self.logger = logging.getLogger(__name__)
@@ -908,7 +912,7 @@ class ViconFtpMonitor:
         output = {
             'metadata': {
                 'last_update': datetime.now().isoformat(),
-                'ftp_host': self.config['ftp'].get('host_prefix', vicon_host.DEFAULT_PREFIX),
+                'ftp_host': self.ftp_manager.host or self.config['ftp'].get('host_prefix', vicon_host.DEFAULT_PREFIX),
                 'monitoring_started': self.monitoring_started,
                 'total_captures': len(captures),
                 'total_files': len(self.state_manager.state['known_files'])
