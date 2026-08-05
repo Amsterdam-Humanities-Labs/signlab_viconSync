@@ -178,6 +178,14 @@ def test_resolve_probe_breaks_tie_between_online_peers(monkeypatch):
     assert vicon_host.resolve_vicon_host() == ("100.111.64.24", "vicon-sb001869-1")
 
 
+def test_resolve_prefers_newest_when_both_reachable(monkeypatch):
+    newer = dict(PEER_ONLINE, DNSName="vicon-sb001869-2.taila8bdbd.ts.net.",
+                 TailscaleIPs=["100.99.99.99"])
+    patch_status(monkeypatch, make_status(PEER_ONLINE, newer))
+    patch_probe(monkeypatch, {"100.111.64.24", "100.99.99.99"})
+    assert vicon_host.resolve_vicon_host() == ("100.99.99.99", "vicon-sb001869-2")
+
+
 def test_resolve_passes_probe_port_through(monkeypatch):
     patch_status(monkeypatch, make_status(PEER_ONLINE))
     seen = {}
