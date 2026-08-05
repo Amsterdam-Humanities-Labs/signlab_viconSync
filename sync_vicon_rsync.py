@@ -25,13 +25,13 @@ import time
 import json
 import threading
 import http.server
+import vicon_host
 from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 # Configuration
-SSH_HOST = "100.83.229.92"
 SSH_USER = "vicon"
 SSH_PASS = "CHANGE_ME"
 
@@ -293,7 +293,8 @@ class SyncCache:
 class ViconSync:
     """Handles syncing files from Vicon system via rsync/SSH."""
 
-    def __init__(self, dry_run=False, cache: Optional[SyncCache] = None):
+    def __init__(self, host, dry_run=False, cache: Optional[SyncCache] = None):
+        self.host = host
         self.dry_run = dry_run
         self.cache = cache or SyncCache(CACHE_FILE)
         self.stats = {
@@ -311,7 +312,7 @@ class ViconSync:
         self.stats['ssh_calls'] += 1
         # Escape double quotes in the command for proper shell execution
         escaped_command = command.replace('"', '\\"')
-        full_cmd = f'sshpass -p {SSH_PASS} ssh -o StrictHostKeyChecking=no {SSH_USER}@{SSH_HOST} "{escaped_command}"'
+        full_cmd = f'sshpass -p {SSH_PASS} ssh -o StrictHostKeyChecking=no {SSH_USER}@{self.host} "{escaped_command}"'
 
         try:
             result = subprocess.run(
@@ -622,7 +623,7 @@ class ViconSync:
         try:
             logger.info(f"  ⬇ Downloading {filename}...")
 
-            scp_cmd = f'sshpass -p {SSH_PASS} scp -o StrictHostKeyChecking=no {SSH_USER}@{SSH_HOST}:{remote_scp_path} {local_file}'
+            scp_cmd = f'sshpass -p {SSH_PASS} scp -o StrictHostKeyChecking=no {SSH_USER}@{self.host}:{remote_scp_path} {local_file}'
 
             result = subprocess.run(
                 scp_cmd,
@@ -763,7 +764,7 @@ class ViconSync:
             remote_scp_path = full_path.replace('\\', '/')
             scp_cmd = (
                 f'sshpass -p {SSH_PASS} scp -o StrictHostKeyChecking=no '
-                f'{SSH_USER}@{SSH_HOST}:{remote_scp_path} {local_file}'
+                f'{SSH_USER}@{self.host}:{remote_scp_path} {local_file}'
             )
 
             try:
@@ -801,7 +802,7 @@ class ViconSync:
         if self.dry_run:
             logger.info("=== DRY RUN MODE - No files will be transferred ===")
 
-        logger.info(f"Starting Vicon file sync from {SSH_HOST}")
+        logger.info(f"Starting Vicon file sync from {self.host}")
         logger.info(f"Scan type: {scan_type}")
         if not do_full_scan:
             logger.info(f"Incremental: Scanning last {INCREMENTAL_DAYS} days")
@@ -972,10 +973,15 @@ class ViconSync:
 def _control_ssh(command, timeout=20):
     """Module-level SSH exec for the control API (no per-sync stats).
     Returns (stdout, returncode)."""
+    try:
+        host, _ = vicon_host.resolve_vicon_host_cached(probe_port=22)
+    except vicon_host.ViconOffline as exc:
+        logger.warning(f"control SSH skipped, Vicon PC unreachable: {exc}")
+        return "", 1
     escaped_command = command.replace('"', '\\"')
     full_cmd = (
         f'sshpass -p {SSH_PASS} ssh -o StrictHostKeyChecking=no '
-        f'{SSH_USER}@{SSH_HOST} "{escaped_command}"'
+        f'{SSH_USER}@{host} "{escaped_command}"'
     )
     try:
         result = subprocess.run(
@@ -1070,8 +1076,15 @@ class ControlHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/status":
+            try:
+                ip, node_name = vicon_host.resolve_vicon_host_cached(probe_port=22)
+                vicon = {"host": ip, "dns_name": node_name, "online": True}
+            except vicon_host.ViconOffline as exc:
+                vicon = {"host": None, "dns_name": None, "online": False,
+                         "error": str(exc)}
             self._send_json(200, {
                 "ok": True,
+                "vicon": vicon,
                 "mocap": {
                     "running": SYNC_LOCK.locked(),
                     "state": LAST_RUN.get("state"),
@@ -1124,7 +1137,7 @@ def main():
         print("  --help, -h        Show this help message")
         print("")
         print(f"Configuration:")
-        print(f"  Host:     {SSH_USER}@{SSH_HOST}")
+        print(f"  Host:     {SSH_USER}@<discovered vicon* tailnet peer>")
         print(f"  Sources:")
         for config in REMOTE_PATHS:
             print(f"    - {config['name']}: {config['base_path']}")
@@ -1184,6 +1197,31 @@ def main():
             # Clear any pending trigger now that we're starting a fresh cycle.
             TRIGGER_EVENT.clear()
 
+            # Locate the Vicon PC before touching SSH. It rejoins the tailnet
+            # under a new node identity (and a new IP) after a reinstall, and
+            # an unreachable PC must be an error rather than an empty scan.
+            try:
+                host, node_name = vicon_host.resolve_vicon_host(probe_port=22)
+            except vicon_host.ViconOffline as exc:
+                logger.error(f"Vicon PC unreachable: {exc}")
+                LAST_RUN["state"] = "offline"
+                if not dry_run:
+                    monitor.send_heartbeat_with_stats(
+                        status="error",
+                        message=f"Vicon PC unreachable: {exc}",
+                        stats={"error_type": "ViconOffline"},
+                    )
+                if run_once:
+                    sys.exit(1)
+                logger.info(
+                    f"Retrying in {CLIENT_MONITOR_INTERVAL} seconds (or until /trigger)..."
+                )
+                if TRIGGER_EVENT.wait(timeout=CLIENT_MONITOR_INTERVAL):
+                    logger.info("Manual trigger received — retrying now")
+                continue
+
+            logger.info(f"Vicon PC found: {node_name} at {host}")
+
             # Run sync (lock prevents concurrent runs from rogue invocations)
             with SYNC_LOCK:
                 LAST_RUN["state"] = "running"
@@ -1193,7 +1231,7 @@ def main():
                 logger.info(f"Starting sync cycle at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 logger.info(f"{'='*60}")
 
-                syncer = ViconSync(dry_run=dry_run, cache=cache)
+                syncer = ViconSync(host=host, dry_run=dry_run, cache=cache)
                 stats = syncer.run()
 
                 LAST_RUN["state"] = "idle"
