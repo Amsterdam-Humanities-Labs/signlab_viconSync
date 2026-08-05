@@ -15,8 +15,9 @@ import logging
 import argparse
 from pathlib import Path
 
+import vicon_host
+
 # Configuration (same SSH creds as sync_vicon_rsync.py)
-SSH_HOST = "100.83.229.92"
 SSH_USER = "vicon"
 SSH_PASS = "CHANGE_ME"
 REMOTE_BASE = "E:\\Recordings"
@@ -82,14 +83,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def ssh_execute(command, timeout=60):
+def vicon_ssh_host():
+    """The Vicon PC's current tailnet address. Raises ViconOffline if it is
+    not reachable — better than hanging an rm against a stale address."""
+    host, _ = vicon_host.resolve_vicon_host(probe_port=22)
+    return host
+
+
+def ssh_execute(command, ssh_host, timeout=60):
     """Execute a command on the remote system via SSH.
     Uses list-based subprocess to avoid shell interpretation of $ and other special chars.
     """
     cmd_list = [
         'sshpass', '-p', SSH_PASS,
         'ssh', '-o', 'StrictHostKeyChecking=no',
-        f'{SSH_USER}@{SSH_HOST}',
+        f'{SSH_USER}@{ssh_host}',
         command
     ]
 
@@ -160,9 +168,9 @@ def get_rclone_files(rclone_path, extension):
     return files
 
 
-def get_date_dirs():
+def get_date_dirs(ssh_host):
     """List date directories under E:\\Recordings (same approach as sync_vicon_rsync.py)."""
-    stdout, returncode = ssh_execute(f'cmd /c dir "{REMOTE_BASE}" /B /AD')
+    stdout, returncode = ssh_execute(f'cmd /c dir "{REMOTE_BASE}" /B /AD', ssh_host)
     if returncode != 0:
         logger.error("Failed to list date directories")
         return []
@@ -177,7 +185,7 @@ def get_date_dirs():
     return sorted(dirs)
 
 
-def get_remote_files(date_dirs, remote_subdir, extension):
+def get_remote_files(date_dirs, remote_subdir, extension, ssh_host):
     """Get all files matching extension under E:\\Recordings\\*\\*\\<subdir>\\ with sizes."""
     if not date_dirs:
         return []
@@ -194,7 +202,7 @@ def get_remote_files(date_dirs, remote_subdir, extension):
             f"| ForEach-Object {{ $_.FullName + '|' + $_.Length }}\""
         )
 
-        output, returncode = ssh_execute(ps_command, timeout=120)
+        output, returncode = ssh_execute(ps_command, ssh_host, timeout=120)
 
         if not output.strip():
             continue
@@ -234,7 +242,7 @@ def find_deletable(remote_files, confirmed_files):
     return deletable, skipped
 
 
-def delete_remote_files(deletable, dry_run=False):
+def delete_remote_files(deletable, ssh_host, dry_run=False):
     """Delete confirmed files from Vicon PC in batches via PowerShell."""
     if not deletable:
         logger.info("No files to delete")
@@ -258,7 +266,7 @@ def delete_remote_files(deletable, dry_run=False):
                 logger.info(f"  [DRY RUN] Would delete: {f['path']} ({f['size']:,} bytes)")
             deleted_count += len(batch)
         else:
-            output, returncode = ssh_execute(ps_command, timeout=120)
+            output, returncode = ssh_execute(ps_command, ssh_host, timeout=120)
             if returncode == 0:
                 for f in batch:
                     logger.info(f"  Deleted: {f['path']} ({f['size']:,} bytes)")
@@ -278,7 +286,10 @@ def main():
     mode = "DRY RUN" if args.dry_run else "LIVE"
     logger.info(f"=== Vicon Cleanup started ({mode}) ===")
 
-    date_dirs = get_date_dirs()
+    ssh_host = vicon_ssh_host()
+    logger.info(f"Resolved Vicon PC to {ssh_host}")
+
+    date_dirs = get_date_dirs(ssh_host)
     if not date_dirs:
         logger.warning("No date directories found — nothing to do")
         return
@@ -304,7 +315,7 @@ def main():
             continue
 
         # 2. Get remote files
-        remote_files = get_remote_files(date_dirs, target['remote_subdir'], target['extension'])
+        remote_files = get_remote_files(date_dirs, target['remote_subdir'], target['extension'], ssh_host)
         if not remote_files:
             logger.info(f"No remote {target['name']} files found — skipping")
             continue
@@ -319,7 +330,7 @@ def main():
             logger.info(f"  Skipped: {s['filename']} — {s['reason']}")
 
         # 4. Delete (or dry-run)
-        deleted_count, error_count = delete_remote_files(deletable, dry_run=args.dry_run)
+        deleted_count, error_count = delete_remote_files(deletable, ssh_host, dry_run=args.dry_run)
 
         space_freed = sum(f['size'] for f in deletable) if deleted_count > 0 else 0
         total_deleted += deleted_count

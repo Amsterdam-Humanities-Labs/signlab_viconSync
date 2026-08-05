@@ -13,8 +13,9 @@ import sys
 import json
 from ftplib import FTP
 
+import vicon_host
+
 # Configuration
-FTP_HOST = "100.83.229.92"
 FTP_USER = "vicon"
 FTP_PASS = "CHANGE_ME"
 FTP_BASE_PATH = "/e/Recordings"
@@ -23,10 +24,18 @@ TARGET_PATH = "/web/gebarenoverleg_media/fbx"
 CACHE_FILE = "/home/gomer/viconSync/ftp_cache.json"
 
 
+def vicon_ftp_host():
+    """The Vicon PC's current tailnet address. Raises ViconOffline if it is
+    not reachable."""
+    host, _ = vicon_host.resolve_vicon_host(probe_port=21)
+    return host
+
+
 def connect_ftp():
     """Establish FTP connection and return the FTP object."""
-    print(f"Connecting to {FTP_HOST}...")
-    ftp = FTP(FTP_HOST)
+    host = vicon_ftp_host()
+    print(f"Connecting to {host}...")
+    ftp = FTP(host)
     ftp.login(FTP_USER, FTP_PASS)
     print("Connected successfully")
     return ftp
