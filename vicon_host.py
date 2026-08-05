@@ -79,3 +79,50 @@ def _ipv4_of(peer):
         if "." in addr:
             return addr
     return None
+
+
+def _probe(ip, port, timeout):
+    """True if a TCP connect to ip:port succeeds within timeout."""
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _offline_detail(candidates):
+    return ", ".join(
+        f"{_label(p)} (last seen {p.get('LastSeen') or 'never'})" for p in candidates
+    ) or "none"
+
+
+def resolve_vicon_host(prefix=DEFAULT_PREFIX, probe_port=22, timeout=10):
+    """Return (ipv4, label) for the live Vicon PC.
+
+    timeout bounds each external operation separately: the tailscale
+    subprocess, then each TCP probe. Worst case with N online candidates is
+    timeout * (N + 1). Raises ViconOffline if nothing answers.
+    """
+    candidates = _candidates(_tailscale_status(timeout=timeout), prefix)
+    if not candidates:
+        raise ViconOffline(f"no {prefix}* peer in tailnet")
+
+    online = [p for p in candidates if p.get("Online")]
+    if not online:
+        raise ViconOffline(
+            f"no {prefix}* peer online; known: {_offline_detail(candidates)}"
+        )
+
+    tried = []
+    for peer in online:
+        ip = _ipv4_of(peer)
+        if not ip:
+            continue
+        if _probe(ip, probe_port, timeout):
+            return ip, _label(peer)
+        tried.append(f"{_label(peer)} ({ip})")
+
+    raise ViconOffline(
+        f"{prefix}* peer(s) online but port {probe_port} closed: "
+        f"{', '.join(tried) or 'no IPv4 address'}"
+    )

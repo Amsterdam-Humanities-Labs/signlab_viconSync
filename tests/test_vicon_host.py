@@ -122,3 +122,77 @@ def test_ipv4_of_skips_ipv6():
 
 def test_ipv4_of_returns_none_without_v4():
     assert vicon_host._ipv4_of({"TailscaleIPs": ["fd7a:115c:a1e0::1"]}) is None
+
+
+def patch_status(monkeypatch, status):
+    monkeypatch.setattr(vicon_host, "_tailscale_status", lambda timeout=10: status)
+
+
+def patch_probe(monkeypatch, reachable):
+    """reachable: set of IPs that accept connections."""
+    monkeypatch.setattr(
+        vicon_host, "_probe",
+        lambda ip, port, timeout: ip in reachable,
+    )
+
+
+def test_resolve_returns_online_peer(monkeypatch):
+    patch_status(monkeypatch, make_status(PEER_OFFLINE, PEER_ONLINE, PEER_PI))
+    patch_probe(monkeypatch, {"100.111.64.24"})
+    assert vicon_host.resolve_vicon_host() == ("100.111.64.24", "vicon-sb001869-1")
+
+
+def test_resolve_ignores_stale_duplicate_hostname(monkeypatch):
+    patch_status(monkeypatch, make_status(PEER_OFFLINE, PEER_ONLINE))
+    patch_probe(monkeypatch, {"100.111.64.24", "100.83.229.92"})
+    ip, _ = vicon_host.resolve_vicon_host()
+    assert ip != "100.83.229.92"
+
+
+def test_resolve_raises_when_no_vicon_peer(monkeypatch):
+    patch_status(monkeypatch, make_status(PEER_PI))
+    with pytest.raises(vicon_host.ViconOffline, match="no vicon\\* peer in tailnet"):
+        vicon_host.resolve_vicon_host()
+
+
+def test_resolve_raises_when_all_offline_and_reports_last_seen(monkeypatch):
+    patch_status(monkeypatch, make_status(PEER_OFFLINE))
+    with pytest.raises(vicon_host.ViconOffline) as exc:
+        vicon_host.resolve_vicon_host()
+    assert "vicon-sb001869" in str(exc.value)
+    assert "2026-06-29" in str(exc.value)
+
+
+def test_resolve_raises_when_online_but_port_closed(monkeypatch):
+    patch_status(monkeypatch, make_status(PEER_ONLINE))
+    patch_probe(monkeypatch, set())
+    with pytest.raises(vicon_host.ViconOffline, match="port 22 closed"):
+        vicon_host.resolve_vicon_host()
+
+
+def test_resolve_probe_breaks_tie_between_online_peers(monkeypatch):
+    newer = dict(PEER_ONLINE, DNSName="vicon-sb001869-2.taila8bdbd.ts.net.",
+                 TailscaleIPs=["100.99.99.99"])
+    patch_status(monkeypatch, make_status(PEER_ONLINE, newer))
+    patch_probe(monkeypatch, {"100.111.64.24"})
+    assert vicon_host.resolve_vicon_host() == ("100.111.64.24", "vicon-sb001869-1")
+
+
+def test_resolve_passes_probe_port_through(monkeypatch):
+    patch_status(monkeypatch, make_status(PEER_ONLINE))
+    seen = {}
+
+    def fake_probe(ip, port, timeout):
+        seen["port"] = port
+        return True
+
+    monkeypatch.setattr(vicon_host, "_probe", fake_probe)
+    vicon_host.resolve_vicon_host(probe_port=21)
+    assert seen["port"] == 21
+
+
+def test_probe_returns_false_on_refused(monkeypatch):
+    def boom(addr, timeout=None):
+        raise OSError("refused")
+    monkeypatch.setattr(vicon_host.socket, "create_connection", boom)
+    assert vicon_host._probe("100.0.0.1", 22, 1) is False
