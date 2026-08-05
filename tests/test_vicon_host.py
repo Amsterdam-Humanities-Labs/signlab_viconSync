@@ -204,3 +204,54 @@ def test_probe_returns_false_on_refused(monkeypatch):
         raise OSError("refused")
     monkeypatch.setattr(vicon_host.socket, "create_connection", boom)
     assert vicon_host._probe("100.0.0.1", 22, 1) is False
+
+
+def test_cached_reuses_result_within_ttl(monkeypatch):
+    vicon_host._clear_cache()
+    calls = []
+    monkeypatch.setattr(
+        vicon_host, "resolve_vicon_host",
+        lambda **kw: calls.append(1) or ("100.111.64.24", "vicon-sb001869-1"),
+    )
+    vicon_host.resolve_vicon_host_cached()
+    vicon_host.resolve_vicon_host_cached()
+    assert len(calls) == 1
+
+
+def test_cached_refreshes_after_ttl(monkeypatch):
+    vicon_host._clear_cache()
+    calls = []
+    monkeypatch.setattr(
+        vicon_host, "resolve_vicon_host",
+        lambda **kw: calls.append(1) or ("100.111.64.24", "vicon-sb001869-1"),
+    )
+    vicon_host.resolve_vicon_host_cached(ttl=0)
+    vicon_host.resolve_vicon_host_cached(ttl=0)
+    assert len(calls) == 2
+
+
+def test_cached_does_not_cache_failures(monkeypatch):
+    vicon_host._clear_cache()
+    calls = []
+
+    def boom(**kw):
+        calls.append(1)
+        raise vicon_host.ViconOffline("offline")
+
+    monkeypatch.setattr(vicon_host, "resolve_vicon_host", boom)
+    for _ in range(2):
+        with pytest.raises(vicon_host.ViconOffline):
+            vicon_host.resolve_vicon_host_cached()
+    assert len(calls) == 2
+
+
+def test_cached_keys_on_probe_port(monkeypatch):
+    vicon_host._clear_cache()
+    ports = []
+    monkeypatch.setattr(
+        vicon_host, "resolve_vicon_host",
+        lambda **kw: ports.append(kw["probe_port"]) or ("100.111.64.24", "n"),
+    )
+    vicon_host.resolve_vicon_host_cached(probe_port=22)
+    vicon_host.resolve_vicon_host_cached(probe_port=21)
+    assert ports == [22, 21]

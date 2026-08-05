@@ -126,3 +126,27 @@ def resolve_vicon_host(prefix=DEFAULT_PREFIX, probe_port=22, timeout=10):
         f"{prefix}* peer(s) online but port {probe_port} closed: "
         f"{', '.join(tried) or 'no IPv4 address'}"
     )
+
+
+_CACHE = {}  # (prefix, probe_port) -> (timestamp, (ip, label))
+
+
+def resolve_vicon_host_cached(prefix=DEFAULT_PREFIX, probe_port=22,
+                              timeout=10, ttl=CACHE_TTL_SECONDS):
+    """resolve_vicon_host with a short TTL memo, for callers hit frequently.
+
+    Only successes are cached: a failure always re-probes, so an offline PC is
+    never reported as live for longer than a single call.
+    """
+    key = (prefix, probe_port)
+    now = time.time()
+    hit = _CACHE.get(key)
+    if hit and now - hit[0] < ttl:
+        return hit[1]
+    value = resolve_vicon_host(prefix=prefix, probe_port=probe_port, timeout=timeout)
+    _CACHE[key] = (now, value)
+    return value
+
+
+def _clear_cache():
+    _CACHE.clear()
