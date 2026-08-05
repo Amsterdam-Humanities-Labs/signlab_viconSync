@@ -432,8 +432,11 @@ class ViconSync:
         stdout, returncode = self.ssh_execute(f'dir "{base_path}" /B /AD')
 
         if returncode != 0:
+            # None means "the call failed", distinct from [] meaning "the
+            # directory is genuinely empty". The caller counts only the former
+            # as a sync error.
             logger.error(f"Failed to list date directories in {base_path}")
-            return []
+            return None
 
         # Parse directory names (filter for date-like directories: YYYY-MM-DD)
         dirs = []
@@ -825,6 +828,11 @@ class ViconSync:
 
             # Get all date directories
             all_date_dirs = self.list_date_directories(base_path)
+
+            if all_date_dirs is None:
+                logger.error(f"Failed to list {base_path} — treating as sync error")
+                self.stats['errors'] += 1
+                continue
 
             if not all_date_dirs:
                 logger.warning(f"No date directories found in {base_path}")
