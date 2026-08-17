@@ -5,14 +5,6 @@ import pytest
 import vicon_credentials
 
 
-@pytest.fixture(autouse=True)
-def clear_cache():
-    """get_vicon_password caches; every test must start from a cold lookup."""
-    vicon_credentials.get_vicon_password.cache_clear()
-    yield
-    vicon_credentials.get_vicon_password.cache_clear()
-
-
 def write_config(tmp_path, password):
     path = tmp_path / "monitor_config.json"
     path.write_text(json.dumps({"ftp": {"user": "vicon", "password": password}}))
