@@ -14,10 +14,11 @@ import json
 from ftplib import FTP
 
 import vicon_host
+from vicon_credentials import get_vicon_password
 
 # Configuration
 FTP_USER = "vicon"
-FTP_PASS = "CHANGE_ME"
+# The password is not stored here; get_vicon_password() reads it at call time.
 FTP_BASE_PATH = "/e/Recordings"
 POST_PROCESSED_PATH = "/web/gebarenoverleg_media/fbx/post_processed"
 TARGET_PATH = "/web/gebarenoverleg_media/fbx"
@@ -36,7 +37,7 @@ def connect_ftp():
     host = vicon_ftp_host()
     print(f"Connecting to {host}...")
     ftp = FTP(host)
-    ftp.login(FTP_USER, FTP_PASS)
+    ftp.login(FTP_USER, get_vicon_password())
     print("Connected successfully")
     return ftp
 

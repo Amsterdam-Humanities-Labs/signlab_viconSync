@@ -16,10 +16,11 @@ import argparse
 from pathlib import Path
 
 import vicon_host
+from vicon_credentials import get_vicon_password
 
 # Configuration (same SSH creds as sync_vicon_rsync.py)
 SSH_USER = "vicon"
-SSH_PASS = "CHANGE_ME"
+# The password is not stored here; get_vicon_password() reads it at call time.
 REMOTE_BASE = "E:\\Recordings"
 LOG_DIR = "/home/gomer/viconSync/logs"
 LOG_FILE = f"{LOG_DIR}/cleanup_vicon.log"
@@ -95,7 +96,7 @@ def ssh_execute(command, ssh_host, timeout=60):
     Uses list-based subprocess to avoid shell interpretation of $ and other special chars.
     """
     cmd_list = [
-        'sshpass', '-p', SSH_PASS,
+        'sshpass', '-p', get_vicon_password(),
         'ssh', '-o', 'StrictHostKeyChecking=no',
         f'{SSH_USER}@{ssh_host}',
         command

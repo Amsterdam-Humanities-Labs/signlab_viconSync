@@ -26,6 +26,7 @@ import json
 import threading
 import http.server
 import vicon_host
+from vicon_credentials import get_vicon_password
 from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -33,7 +34,7 @@ from typing import Optional, Dict, Any, List
 
 # Configuration
 SSH_USER = "vicon"
-SSH_PASS = "CHANGE_ME"
+# The password is not stored here; get_vicon_password() reads it at call time.
 
 # Remote paths to sync (in order)
 REMOTE_PATHS = [
@@ -312,7 +313,7 @@ class ViconSync:
         self.stats['ssh_calls'] += 1
         # Escape double quotes in the command for proper shell execution
         escaped_command = command.replace('"', '\\"')
-        full_cmd = f'sshpass -p {SSH_PASS} ssh -o StrictHostKeyChecking=no {SSH_USER}@{self.host} "{escaped_command}"'
+        full_cmd = f'sshpass -p {get_vicon_password()} ssh -o StrictHostKeyChecking=no {SSH_USER}@{self.host} "{escaped_command}"'
 
         try:
             result = subprocess.run(
@@ -637,7 +638,7 @@ class ViconSync:
         try:
             logger.info(f"  ⬇ Downloading {filename}...")
 
-            scp_cmd = f'sshpass -p {SSH_PASS} scp -o StrictHostKeyChecking=no {SSH_USER}@{self.host}:{remote_scp_path} {local_file}'
+            scp_cmd = f'sshpass -p {get_vicon_password()} scp -o StrictHostKeyChecking=no {SSH_USER}@{self.host}:{remote_scp_path} {local_file}'
 
             result = subprocess.run(
                 scp_cmd,

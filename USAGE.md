@@ -164,7 +164,8 @@ If it prints an address, discovery and SSH-port reachability are both fine, so
 test the login itself:
 ```bash
 VICON=$(python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22)[0])")
-sshpass -p 'CHANGE_ME' ssh vicon@"$VICON" "echo Connection OK"
+VICON_PW=$(python3 -c "from vicon_credentials import get_vicon_password; print(get_vicon_password())")
+sshpass -p "$VICON_PW" ssh vicon@"$VICON" "echo Connection OK"
 ```
 
 ### Rsync Fails
@@ -174,10 +175,11 @@ sshpass -p 'CHANGE_ME' ssh vicon@"$VICON" "echo Connection OK"
 ```bash
 cd /home/gomer/viconSync
 VICON=$(python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22)[0])")
+VICON_PW=$(python3 -c "from vicon_credentials import get_vicon_password; print(get_vicon_password())")
 
 # Test rsync manually with a known file
 rsync -avz --dry-run \
-  -e "sshpass -p 'CHANGE_ME' ssh -o StrictHostKeyChecking=no" \
+  -e "sshpass -p $VICON_PW ssh -o StrictHostKeyChecking=no" \
   vicon@"$VICON":/e/Recordings/2026-01-14/M20251216_8568_260114_0/unreal/*.fbx \
   /web/gebarenoverleg_media/fbx/
 
@@ -210,12 +212,13 @@ df -h /web/gebarenoverleg_media/fbx/
 ```bash
 cd /home/gomer/viconSync
 VICON=$(python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22)[0])")
+VICON_PW=$(python3 -c "from vicon_credentials import get_vicon_password; print(get_vicon_password())")
 
 # Check remote directory manually
-sshpass -p 'CHANGE_ME' ssh vicon@"$VICON" "dir E:\\Recordings"
+sshpass -p "$VICON_PW" ssh vicon@"$VICON" "dir E:\\Recordings"
 
 # Check if files exist in a known recording
-sshpass -p 'CHANGE_ME' ssh vicon@"$VICON" "dir E:\\Recordings\\2026-01-14\\M20251216_8568_260114_0\\unreal"
+sshpass -p "$VICON_PW" ssh vicon@"$VICON" "dir E:\\Recordings\\2026-01-14\\M20251216_8568_260114_0\\unreal"
 ```
 
 ### Sync Is Slow

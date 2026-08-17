@@ -104,7 +104,9 @@ needed: `git log --all --diff-filter=D -- sync_fbx.py.old`.
 /home/gomer/viconSync/
 ├── sync_vicon_rsync.py     # Main sync script (SSH/rsync)
 ├── resync_fbx.py            # Re-sync utility (FTP)
-├── sync_fbx.py.old          # Deprecated FTP script
+├── vicon_host.py            # Runtime address discovery
+├── vicon_credentials.py     # Password lookup (config / $VICON_PASSWORD)
+├── monitor_config.example.json  # Config template; copy to monitor_config.json
 ├── README.md                # This file
 ├── USAGE.md                 # User guide
 └── logs/                    # Log files
@@ -177,8 +179,9 @@ Edit the configuration section in `sync_vicon_rsync.py`:
 ```python
 # No host constant: the address comes from vicon_host.resolve_vicon_host()
 # at startup (see "Host Discovery" above) and is passed to ViconSync(host=...).
+# No password constant either: get_vicon_password() reads it from
+# monitor_config.json (or $VICON_PASSWORD) at call time. See "Setup" above.
 SSH_USER = "vicon"
-SSH_PASS = "CHANGE_ME"
 
 # Remote paths to sync (in order)
 REMOTE_PATHS = [
@@ -221,7 +224,8 @@ python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22
 # If that raises ViconOffline, the PC is down or off the tailnet — stop here.
 # Otherwise test SSH manually against the address it just resolved:
 VICON=$(python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22)[0])")
-sshpass -p 'CHANGE_ME' ssh vicon@"$VICON" "echo Connection successful"
+VICON_PW=$(python3 -c "from vicon_credentials import get_vicon_password; print(get_vicon_password())")
+sshpass -p "$VICON_PW" ssh vicon@"$VICON" "echo Connection successful"
 
 # Check SSH keys
 ls -la ~/.ssh/
@@ -231,10 +235,11 @@ ls -la ~/.ssh/
 ```bash
 cd /home/gomer/viconSync
 VICON=$(python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22)[0])")
+VICON_PW=$(python3 -c "from vicon_credentials import get_vicon_password; print(get_vicon_password())")
 
 # Test rsync manually with a single file
 rsync -avz --dry-run \
-  -e "sshpass -p 'CHANGE_ME' ssh -o StrictHostKeyChecking=no" \
+  -e "sshpass -p $VICON_PW ssh -o StrictHostKeyChecking=no" \
   vicon@"$VICON":/e/Recordings/2026-01-14/M20251216_8568_260114_0/unreal/*.fbx \
   /web/gebarenoverleg_media/fbx/
 ```
