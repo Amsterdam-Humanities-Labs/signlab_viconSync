@@ -3,6 +3,20 @@
 ## Overview
 This directory contains scripts for synchronizing motion capture files from the Vicon system to local storage.
 
+## Setup
+
+`monitor_config.json` holds the FTP credentials and is not tracked in git. Create
+it from the template before running anything:
+
+```bash
+cp monitor_config.example.json monitor_config.json
+```
+
+Then fill in `ftp.password` (the template ships `CHANGE_ME`). The remaining
+values — paths, poll intervals, client-monitor endpoints — are safe defaults and
+usually need no change. Everything else the scripts need (the Vicon PC's address)
+is discovered at runtime; see below.
+
 ## Host Discovery
 
 The Vicon PC's address is **not** configured anywhere. It rejoins the tailnet
@@ -66,12 +80,11 @@ Re-downloads files from the FTP server based on post_processed directory content
 
 ## Deprecated Scripts
 
-### `sync_fbx.py.old` (DEPRECATED)
-Original FTP-based sync script.
-
-- **Status**: Deprecated as of 2026-01-20
-- **Replacement**: Use `sync_vicon_rsync.py` instead
-- **Reason**: Migrated to SSH/rsync for improved security and efficiency
+### `sync_fbx.py` (REMOVED)
+Original FTP-based sync script, deprecated 2026-01-20 and deleted from the working
+tree when the repo was published. Superseded by `sync_vicon_rsync.py`, which uses
+SSH/rsync for improved security and efficiency. Recover it from git history if
+needed: `git log --all --diff-filter=D -- sync_fbx.py.old`.
 
 ## Migration History
 

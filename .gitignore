@@ -1,3 +1,10 @@
+# Local config: holds the FTP password. Copy monitor_config.example.json to
+# monitor_config.json and fill in the credentials.
+monitor_config.json
+
+# Machine-local MCP server paths
+.mcp.json
+
 # Runtime state / caches (large, machine-specific)
 monitor_output.json
 monitor_state.json
@@ -9,9 +16,13 @@ blackmagic_compress_state.json
 logs/
 __pycache__/
 *.pyc
+.pytest_cache/
+.venv/
+venv/
 
-# SDD scratch
+# Agent scratch
 .superpowers/
+.claude/
 
 # Scratch encode temp on the destination mount (never in-repo, but be safe)
 .blackmagic_mini_tmp/

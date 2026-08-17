@@ -58,7 +58,8 @@ def test_connect_returns_false_when_vicon_offline(monkeypatch):
 
 
 def test_config_has_no_hardcoded_ip():
-    source = open("monitor_config.json").read()
+    # The example template is the tracked one; monitor_config.json is local-only.
+    source = open("monitor_config.example.json").read()
     assert "100.83.229.92" not in source
 
 
