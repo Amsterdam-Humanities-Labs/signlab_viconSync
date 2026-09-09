@@ -1,7 +1,105 @@
-# Vicon Sync Scripts
+# signlab_viconSync
 
-## Overview
-This directory contains scripts for synchronizing motion capture files from the Vicon system to local storage.
+Pulls motion-capture recordings off the Vicon PC in the lab, files them on the
+signcollect core server, registers them in MySQL, and cleans the Vicon PC up
+again once a copy is safe elsewhere.
+
+## What it does
+
+The Vicon capture PC in the studio writes recordings to its own local disks
+(`E:\Recordings` for raw exports, `D:\PostExports\FBX` for post-processed
+FBX). Nothing downstream can see those disks, so this repo is the bridge. It
+holds several small programs that between them:
+
+- **sync** FBX/GLB exports over SSH/SCP into `/web/gebarenoverleg_media/fbx/`
+  (`sync_vicon_rsync.py`, the primary job);
+- **watch** the Vicon FTP server continuously and write what it sees — captures,
+  files, sizes, whether a file is still growing — into MySQL
+  (`ftp_monitor.py` + `db_writer.py`, see `DATABASE_README.md`);
+- **match** synced FBX files against their GLB counterparts and record the pairing
+  (`glb_matcher.py`);
+- **compress** Blackmagic 6K studio clips into 1080p HEVC "Mini" copies
+  (`compress_blackmagic.py`, encode offloaded over SSH to the `monsterfish` GPU box);
+- **clean up** the Vicon PC by deleting recordings that are confirmed stored
+  locally or on the research drive (`cleanup_vicon.py`).
+
+Each long-running piece reports a heartbeat to the Client Monitor API on
+signcollect.nl, so a silently dead job shows up as a missing heartbeat.
+
+## Where it runs
+
+**The signcollect core server (production VPS).** Everything in this repo is
+deployed to `/home/gomer/viconSync` and runs there — not on the Vicon PC:
+
+- targets and reads server-local paths (`/web/gebarenoverleg_media/fbx`,
+  `/mnt/bigstorage/blackmagic_filesMini`);
+- reads MySQL credentials from `/web/mysql_config.php` (`db_config.py`);
+- is scheduled by the estate's `signlab_pythonCron` scheduler and by systemd
+  units that run as `User=gomer`;
+- reaches the Vicon PC *remotely*, over the tailnet, via SSH/SCP and FTP.
+
+The Vicon PC itself is a Windows machine on the tailnet; this code only ever
+talks to it as a client. Its address is not configured anywhere — see
+[Host Discovery](#host-discovery).
+
+## Status
+
+**Production.** `sync_vicon_rsync.py` runs nightly and is the supported path;
+`resync_fbx.py` is a manual FTP-based utility retained for one-off re-downloads.
+
+## How to run it
+
+Python 3 (`/usr/bin/python3` on the server), no virtualenv in production.
+Third-party imports: `requests`, `pymysql`. External binaries: `ssh`, `scp`,
+`sshpass`, `rsync`, `tailscale`, `ffmpeg` (for the compressor), `rclone` (for
+`cleanup_vicon.py`'s SharePoint check).
+
+| Entry point | Invocation | Scheduled by |
+|---|---|---|
+| `sync_vicon_rsync.py` | `python3 sync_vicon_rsync.py [--dry-run]` | pythonCron, daily 02:30 |
+| `cleanup_vicon.py` | `python3 cleanup_vicon.py` | manual; see note below |
+| `compress_blackmagic.py` | `python3 compress_blackmagic.py --once` | systemd `vicon-blackmagic-mini.timer`, daily 04:00 |
+| `ftp_monitor.py` | `python3 ftp_monitor.py` | long-running monitor (see `DATABASE_README.md`) |
+| `glb_matcher.py` | `python3 glb_matcher.py` | long-running matcher |
+| `resync_fbx.py` | `python3 resync_fbx.py [--refresh-cache]` | manual only |
+
+`signlab_pythonCron` is the estate scheduler. Its `config.json` carries two
+entries pointing into `/home/gomer/viconSync/`: the nightly 02:30
+`sync_vicon_rsync.py` above, and a weekly 04:00 "Cleanup OBS from Vicon PC"
+job running `cleanup_obs.py`. **TODO: confirm what `cleanup_obs.py` is** — that
+filename has never existed in this repo (only `cleanup_vicon.py` has), so the
+scheduled file is either a deploy-only leftover or an older name for it.
+Changing a schedule means editing the pythonCron repo, not this one.
+
+Tests are pytest and mock everything remote: `python3 -m pytest tests -q`.
+
+## Configuration
+
+- `monitor_config.json` — **not in git.** FTP/SSH password plus the tuning for
+  the monitor, GLB matcher and Blackmagic compressor. Copy it from
+  `monitor_config.example.json` and fill in `ftp.password`. `VICON_PASSWORD` in
+  the environment overrides it (`vicon_credentials.py`).
+- `/web/mysql_config.php` — **not in git, lives on the server.** The MySQL
+  credentials are parsed out of the site's PHP config by `db_config.py`; there
+  is no database password in this repo.
+- The Vicon PC's address — not configured at all, discovered at runtime.
+
+## Dependencies
+
+- The **Vicon capture PC** (Windows), on the tailnet, with its SSH and FTP
+  services up.
+- **Tailscale** on the server: `vicon_host.py` shells out to `tailscale status --json`.
+- **MySQL** on the core server (schema in `create_tables.sql`; see
+  `DATABASE_README.md`).
+- **`signlab_pythonCron`** — schedules the sync and cleanup jobs.
+- **`monsterfish`** (GPU box, SSH-reachable) — does the HEVC encode for
+  `compress_blackmagic.py`.
+- **Client Monitor API** (`https://signcollect.nl/client_monitor_api/api.php`) —
+  optional; failures never block a sync.
+
+Further reading: `USAGE.md` (operator guide), `DATABASE_README.md` (schema and
+the FTP monitor), `DASHBOARD_README.md` (the dashboard fed by this data),
+`docs/pipeline_overview.html`.
 
 ## Setup
 
