@@ -19,8 +19,6 @@ import sys
 import re
 import subprocess
 import logging
-import socket
-import requests
 import time
 import json
 import threading
@@ -112,86 +110,21 @@ CLIENT_MONITOR_NAME = "Vicon File Sync (SSH/SCP)"
 CLIENT_MONITOR_DESCRIPTION = "Syncs FBX/GLB files from E:\\Recordings and D:\\PostExports\\FBX via SSH/SCP"
 CLIENT_MONITOR_INTERVAL = 86400  # 24 hours (runs daily at 2:30 AM)
 
-# Setup logging
-os.makedirs(LOG_DIR, exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] [%(levelname)s] %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILE),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+# Setup logging. Rotating, because this file used to grow without limit on a
+# partition that checkDisk reports on through the same API as the heartbeat.
+setup_rotating_logger(LOG_FILE, fmt='[%(asctime)s] [%(levelname)s] %(message)s',
+                      stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 
-class ClientMonitor:
-    """Client Monitor API wrapper for health tracking"""
-
-    def __init__(
-        self,
-        api_url: str,
-        client_id: str,
-        client_name: str,
-        description: str = "",
-        heartbeat_interval: int = 3600
-    ):
-        self.api_url = api_url
-        self.client_id = client_id
-        self.client_name = client_name
-        self.description = description
-        self.heartbeat_interval = heartbeat_interval
-        self.hostname = socket.gethostname()
-
-    def send_heartbeat(self, metadata: Optional[Dict[str, Any]] = None) -> bool:
-        """Send a heartbeat to update the last_seen timestamp"""
-        try:
-            data = {
-                "client_id": self.client_id,
-                "metadata": metadata or {
-                    "last_run": datetime.now().isoformat(),
-                    "hostname": self.hostname
-                }
-            }
-
-            response = requests.post(
-                f"{self.api_url}?action=heartbeat",
-                json=data,
-                headers={"Content-Type": "application/json"},
-                timeout=10
-            )
-            response.raise_for_status()
-
-            result = response.json()
-            if result.get("success"):
-                logger.info("✓ Heartbeat sent to monitoring system")
-                return True
-            else:
-                logger.warning(f"✗ Heartbeat failed: {result.get('errors')}")
-                return False
-
-        except Exception as e:
-            logger.warning(f"Could not send heartbeat to monitoring system: {e}")
-            return False
-
-    def send_heartbeat_with_stats(
-        self,
-        status: str,
-        message: str,
-        stats: Optional[Dict[str, Any]] = None
-    ) -> bool:
-        """Send a heartbeat with status and statistics"""
-        metadata = {
-            "last_run": datetime.now().isoformat(),
-            "hostname": self.hostname,
-            "status": status,
-            "message": message
-        }
-
-        if stats:
-            metadata.update(stats)
-
-        return self.send_heartbeat(metadata)
+# The heartbeat client. Prefer the installed package; fall back to the copy
+# vendored beside this file, which is what a host that has never run
+# client/install.sh from signlab_client_monitor_api will find. The two are
+# byte-identical - see the header of python_client.py.
+try:
+    from signlab_client_monitor import ClientMonitor, setup_rotating_logger
+except ImportError:
+    from python_client import ClientMonitor, setup_rotating_logger
 
 
 class SyncCache:

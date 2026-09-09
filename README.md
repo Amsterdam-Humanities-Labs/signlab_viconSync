@@ -26,6 +26,15 @@ holds several small programs that between them:
 Each long-running piece reports a heartbeat to the Client Monitor API on
 signcollect.nl, so a silently dead job shows up as a missing heartbeat.
 
+That heartbeat client used to be pasted into `ftp_monitor.py`, `glb_matcher.py`
+and `sync_vicon_rsync.py` as three separately drifted copies of the class in
+`python_client.py`. It is now the `signlab-client-monitor` package, which lives
+in `signlab_client_monitor_api/client`. `python_client.py` here is a verbatim
+vendored copy of it, kept so the scripts keep working on a host where the
+package has never been installed; the imports prefer the package and fall back
+to it. Do not edit `python_client.py` - refresh it from the package, per the
+instructions in its own header.
+
 ## Where it runs
 
 **The signcollect core server (production VPS).** Everything in this repo is

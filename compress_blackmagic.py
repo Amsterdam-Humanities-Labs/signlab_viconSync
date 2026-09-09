@@ -219,7 +219,10 @@ def _make_monitor(cfg):
     if not cm.get("enabled"):
         return None
     try:
-        from python_client import ClientMonitor
+        try:
+            from signlab_client_monitor import ClientMonitor
+        except ImportError:
+            from python_client import ClientMonitor
         return ClientMonitor(
             api_url=cm["api_url"], client_id=cm["client_id"],
             client_name=cm["client_name"], description=cm.get("description", ""),
