@@ -31,6 +31,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
+
+# The heartbeat client. Prefer the installed package; fall back to the copy
+# vendored beside this file, which is what a host that has never run
+# client/install.sh from signlab_client_monitor_api will find. The two are
+# byte-identical - see the header of python_client.py.
+try:
+    from signlab_client_monitor import ClientMonitor, setup_rotating_logger
+except ImportError:
+    from python_client import ClientMonitor, setup_rotating_logger
+
 # Configuration
 SSH_USER = "vicon"
 # The password is not stored here; get_vicon_password() reads it at call time.
@@ -120,16 +130,6 @@ CLIENT_MONITOR_INTERVAL = 86400  # 24 hours (runs daily at 2:30 AM)
 setup_rotating_logger(LOG_FILE, fmt='[%(asctime)s] [%(levelname)s] %(message)s',
                       stream=sys.stdout)
 logger = logging.getLogger(__name__)
-
-
-# The heartbeat client. Prefer the installed package; fall back to the copy
-# vendored beside this file, which is what a host that has never run
-# client/install.sh from signlab_client_monitor_api will find. The two are
-# byte-identical - see the header of python_client.py.
-try:
-    from signlab_client_monitor import ClientMonitor, setup_rotating_logger
-except ImportError:
-    from python_client import ClientMonitor, setup_rotating_logger
 
 
 class SyncCache:

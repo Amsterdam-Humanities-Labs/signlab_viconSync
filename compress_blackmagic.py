@@ -18,6 +18,7 @@ import argparse
 import hashlib
 import json
 import logging
+import logging.handlers
 import os
 import subprocess
 import threading
@@ -299,13 +300,36 @@ def run_once(cfg, state_path, limit=None, dry_run=False):
     return stats
 
 
+# 5 MB x 5, the same policy as setup_rotating_logger in the heartbeat client.
+# This script only imports that client lazily for the heartbeat, so logging
+# uses the stdlib handler directly rather than depending on it.
+LOG_MAX_BYTES = 5 * 1024 * 1024
+LOG_BACKUP_COUNT = 5
+
+
+def _rotating_handler(path):
+    return logging.handlers.RotatingFileHandler(
+        path, maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT)
+
+
+def _skip_logger(path):
+    """A logger that appends raw `rel<TAB>err` lines to `path`, rotated."""
+    skip = logging.getLogger("blackmagic_mini.skips." + path)
+    if not skip.handlers:
+        handler = _rotating_handler(path)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        skip.addHandler(handler)
+        skip.setLevel(logging.INFO)
+        skip.propagate = False
+    return skip
+
+
 def _log_skip(cfg, rel, err):
     path = cfg.get("skip_log")
     if not path:
         return
     try:
-        with open(path, "a") as f:
-            f.write(f"{rel}\t{err}\n")
+        _skip_logger(path).info("%s\t%s", rel, err)
     except OSError:
         pass
 
@@ -315,7 +339,7 @@ def _setup_logging(cfg):
     logf = cfg.get("log_file")
     if logf:
         os.makedirs(os.path.dirname(logf), exist_ok=True)
-        handlers.append(logging.FileHandler(logf))
+        handlers.append(_rotating_handler(logf))
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s",
                         handlers=handlers)
