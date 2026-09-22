@@ -40,6 +40,7 @@ Run this before any manual ssh; `ViconOffline` means the PC is down or off the t
 ## Configuration
 - `monitor_config.json` (not in git): from `monitor_config.example.json`, fill `ftp.password` (or set `VICON_PASSWORD`). Also tunes monitor, matcher, `blackmagic_mini`.
 - `/web/mysql_config.php` (server): parsed by `db_config.py` for MySQL credentials.
+- Docroot paths (`/web/...`) resolve through vendored `sc_paths.py`: `SC_WEB_ROOT` env or in `$SC_ENV_FILE`/`/web/.env`, default `/web`. `VICON_BLACKMAGIC_STATUS_PATH` overrides the Vicon PC status-file path. Edit `sc_paths.py` in signlab_signcollect-lib, not here.
 - State: `monitor_state.json`, `blackmagic_compress_state.json` (delete an entry to force re-encode, clear `failures` to retry a parked clip).
 - Logs: `logs/sync_vicon_rsync.log`, `logs/ftp_monitor.log`, `logs/glb_matcher.log`, `logs/blackmagic_mini*.log`.
 - `python_client.py` is a vendored copy of `signlab_client_monitor_api/client`; imports prefer the package. Do not edit it.

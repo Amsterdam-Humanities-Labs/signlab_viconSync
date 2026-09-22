@@ -25,6 +25,7 @@ import threading
 import http.server
 import vicon_host
 from vicon_credentials import get_vicon_password
+from sc_paths import sc_path, sc_setting
 from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -50,7 +51,7 @@ REMOTE_PATHS = [
     }
 ]
 
-LOCAL_PATH = "/web/gebarenoverleg_media/fbx"
+LOCAL_PATH = sc_path("media_fbx")
 FILE_EXTENSIONS = ['.fbx', '.glb']
 
 # Extra recording subdirs to sync from E:\Recordings (beyond unreal)
@@ -58,22 +59,22 @@ EXTRA_RECORDING_SUBDIRS = [
     {
         'subdir': 'livelink',
         'extensions': ['.csv'],
-        'local_path': '/web/gebarenoverleg_media/llcsv',
+        'local_path': sc_path('media', 'llcsv'),
     },
     {
         'subdir': 'unreal',
         'extensions': ['.csv'],
-        'local_path': '/web/gebarenoverleg_media/llcsv',
+        'local_path': sc_path('media', 'llcsv'),
     },
     {
         'subdir': 'metadata',
         'extensions': ['.json'],
-        'local_path': '/web/gebarenoverleg_media/metadata',
+        'local_path': sc_path('media', 'metadata'),
     },
     {
         'subdir': 'shogun_live',
         'extensions': ['.mov', '.mcp', '.enf', '.x2d'],
-        'local_path': '/web/gebarenoverleg_media/shogun_live',
+        'local_path': sc_path('media', 'shogun_live'),
     },
 ]
 
@@ -92,7 +93,11 @@ LAST_RUN = {"state": "starting", "last_run": None, "last_stats": None, "started_
 # rclone mount, which is not visible to SSH logins. We trigger it with
 # `schtasks /run` and read its progress from a status file it writes.
 BLACKMAGIC_TASK = "BlackmagicManualSync"
-BLACKMAGIC_STATUS_PATH = r"C:\Users\VICON\Desktop\Code\tools\BlackmagicExtraTools\blackmagic_RD_sync\bmcam_sync_status.json"
+# Path on the Vicon PC; override with VICON_BLACKMAGIC_STATUS_PATH (env or /web/.env).
+BLACKMAGIC_STATUS_PATH = sc_setting(
+    "VICON_BLACKMAGIC_STATUS_PATH",
+    r"C:\Users\VICON\Desktop\Code\tools\BlackmagicExtraTools\blackmagic_RD_sync\bmcam_sync_status.json",
+)
 BLACKMAGIC_STATUS_STALE_SECONDS = 600
 _BM_STATUS_CACHE = {"ts": 0.0, "data": None}
 
