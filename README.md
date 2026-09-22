@@ -5,7 +5,8 @@ Pulls mocap recordings off the Vicon PC, files them on the core server, register
 - `sync_vicon_rsync.py` (primary): SCP over SSH from `E:\Recordings` (raw, `*/*/unreal/`) and `D:\PostExports\FBX` into `/web/gebarenoverleg_media/fbx/` (FBX + GLB, size-compared).
 - `ftp_monitor.py` + `db_writer.py`: full FTP scan at startup, then today's dir every 1.5 s; writes `vicon_captures`, `vicon_files`, `vicon_monitor_metadata` (and `monitor_output.json`).
 - `glb_matcher.py`: pairs synced FBX with GLBs. `resync_fbx.py`: manual FTP re-download.
-- `compress_blackmagic.py`: Blackmagic 6K clips to 1080p HEVC "Mini" copies, encoded on `monsterfish` over SSH.
+- `compress_blackmagic.py`: Blackmagic 6K clips to 1080p HEVC "Mini" copies, encoded locally with ffmpeg.
+- `cc_pipeline/`: CC FBX to retarget-ready GLB + shape-key JSON (FBXtoGLBCompression, Blender, node); see `cc_pipeline/README.md`.
 - `cleanup_vicon.py`: deletes recordings from the Vicon PC once stored locally or on the research drive (rclone check).
 - Control port `127.0.0.1:8765` (used by mocapStudio's `triggerSync.php`). Heartbeats go to the Client Monitor API.
 
@@ -22,6 +23,7 @@ Python 3, no venv; `requests`, `pymysql`; binaries `ssh`, `scp`, `sshpass`, `rsy
 |---|---|
 | `python3 sync_vicon_rsync.py [--dry-run]` | pythonCron, daily 02:30 |
 | `python3 compress_blackmagic.py --once` (`--dry-run`, `--limit 2`) | `vicon-blackmagic-mini.timer`, daily 04:00 |
+| `cc_pipeline/convert_all.sh -j 2` | `vicon-cc-pipeline.timer`, hourly (also per CC file from the sync) |
 | `python3 ftp_monitor.py`, `python3 glb_matcher.py` | long-running |
 | `python3 cleanup_vicon.py`, `python3 resync_fbx.py [--refresh-cache]` | manual |
 
@@ -46,7 +48,7 @@ Run this before any manual ssh; `ViconOffline` means the PC is down or off the t
 - `python_client.py` is a vendored copy of `signlab_client_monitor_api/client`; imports prefer the package. Do not edit it.
 
 ## Dependencies
-- Vicon PC (SSH + FTP on the tailnet), Tailscale on the server, `monsterfish` GPU box.
+- Vicon PC (SSH + FTP on the tailnet), Tailscale on the server; `monsterfish` only for the manual CC backfill.
 - MySQL `admin_gebarenoverleg`; signlab_viconDashboard and sC-Animation-PP read the rows.
 - signlab_pythonCron (scheduling); Client Monitor API `https://signcollect.nl/client_monitor_api/api.php` (optional).
 - Diagram: `docs/pipeline_overview.html`. Design notes: `docs/superpowers/specs/`.
