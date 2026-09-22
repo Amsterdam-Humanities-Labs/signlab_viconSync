@@ -6,9 +6,9 @@ Source clips live at:
 Mini copies are written to:
     <dest_path>/<date>/<name>.mp4     (1920x1080 HEVC, faststart)
 
-The heavy encode runs on monsterfish over an SSH pipe (source streamed via
-stdin, fragmented mp4 back via stdout); a local stream-copy remux restores a
-clean +faststart mp4, then the result is atomically moved into place.
+The encode runs locally with ffmpeg, writing a +faststart mp4 into a scratch
+dir on the destination filesystem; the result is then atomically moved into
+place. (It used to be offloaded to monsterfish over SSH; that host is gone.)
 
 Config lives in monitor_config.json -> "blackmagic_mini".
 Resumable via blackmagic_compress_state.json. Runs one scan per invocation
@@ -26,16 +26,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger("blackmagic_mini")
-
-SSH_OPTS = [
-    "-o", "BatchMode=yes",
-    "-o", "StrictHostKeyChecking=accept-new",
-    "-o", "ControlMaster=auto",
-    "-o", "ControlPath=/tmp/bm_mini_ssh_%C",
-    "-o", "ControlPersist=300",
-    "-o", "ServerAliveInterval=30",
-]
-
 
 def load_config(config_path):
     """Return the 'blackmagic_mini' sub-dict from monitor_config.json."""
@@ -117,39 +107,23 @@ def build_plan(cfg, state):
             "n_unreadable": n_unreadable}
 
 
-def remote_ffmpeg_cmd(cfg, audio_args):
-    """ffmpeg command (runs on monsterfish): stdin -> 1080p HEVC -> fragmented
-    mp4 on stdout. Fragmented movflags are required to stream mp4 over a pipe."""
+def ffmpeg_argv(cfg, src, out_path, audio_args):
+    """ffmpeg argv: src -> 1080p HEVC +faststart mp4 at out_path."""
     e = cfg["encode"]
-    scale = f"scale={e['scale_width']}:{e['scale_height']}"
-    parts = [
-        "ffmpeg", "-hide_banner", "-v", "error", "-i", "-",
-        "-vf", scale,
+    return [
+        "ffmpeg", "-hide_banner", "-v", "error", "-y", "-i", src,
+        "-vf", f"scale={e['scale_width']}:{e['scale_height']}",
         "-c:v", e["codec"], "-crf", str(e["crf"]), "-preset", e["preset"],
         *audio_args,
-        "-movflags", "+frag_keyframe+empty_moov+default_base_moof",
-        "-f", "mp4", "-",
+        "-movflags", "+faststart",
+        out_path,
     ]
-    return " ".join(parts)
 
 
-def ssh_argv(cfg, remote_cmd):
-    return ["ssh", *SSH_OPTS, cfg["encode"]["ssh_host"], remote_cmd]
-
-
-def remux_faststart_argv(frag_path, out_path):
-    """Local stream-copy remux to restore a normal +faststart mp4 (no re-encode)."""
-    return ["ffmpeg", "-hide_banner", "-v", "error", "-y",
-            "-i", frag_path, "-c", "copy", "-movflags", "+faststart", out_path]
-
-
-def _run_remote_encode(src, frag_out, cfg, audio_args):
-    """Stream src into monsterfish ffmpeg, capture fragmented mp4 to frag_out."""
-    argv = ssh_argv(cfg, remote_ffmpeg_cmd(cfg, audio_args))
-    with open(src, "rb") as fin, open(frag_out, "wb") as fout:
-        r = subprocess.run(argv, stdin=fin, stdout=fout,
-                           stderr=subprocess.PIPE, timeout=1800)
-    ok = r.returncode == 0 and os.path.isfile(frag_out) and os.path.getsize(frag_out) > 0
+def _run_encode(src, out_path, cfg, audio_args):
+    r = subprocess.run(ffmpeg_argv(cfg, src, out_path, audio_args),
+                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=1800)
+    ok = r.returncode == 0 and os.path.isfile(out_path) and os.path.getsize(out_path) > 0
     err = "" if ok else (r.stderr.decode("utf-8", "replace")[:300] if r.stderr else "no output")
     return ok, err
 
@@ -161,24 +135,18 @@ def _uniq(rel):
 
 
 def encode_one(item, cfg, scratch_dir):
-    """Encode one clip on monsterfish, remux to faststart locally, atomically
-    move into item['dest']. scratch_dir MUST be on the same filesystem as dest
-    so the final os.replace is atomic. Returns (ok, err)."""
+    """Encode one clip into scratch_dir, then atomically move it into
+    item['dest']. scratch_dir MUST be on the same filesystem as dest so the
+    final os.replace is atomic. Returns (ok, err)."""
     src, dest = item["src"], item["dest"]
-    base = _uniq(item["rel"])
-    frag = os.path.join(scratch_dir, base + ".frag.mp4")
-    final = os.path.join(scratch_dir, base + ".mp4")
+    final = os.path.join(scratch_dir, _uniq(item["rel"]) + ".mp4")
     try:
-        ok, err = _run_remote_encode(src, frag, cfg, ["-c:a", "copy"])
+        ok, err = _run_encode(src, final, cfg, ["-c:a", "copy"])
         if not ok:
             # Blackmagic clips are often PCM audio, which mp4 can't copy — re-encode.
-            ok, err = _run_remote_encode(src, frag, cfg, ["-c:a", "aac", "-b:a", "128k"])
+            ok, err = _run_encode(src, final, cfg, ["-c:a", "aac", "-b:a", "128k"])
             if not ok:
-                return False, "remote-encode: " + err
-        r = subprocess.run(remux_faststart_argv(frag, final),
-                           stderr=subprocess.PIPE, timeout=300)
-        if r.returncode != 0 or not os.path.isfile(final) or os.path.getsize(final) == 0:
-            return False, "remux: " + (r.stderr.decode("utf-8", "replace")[:300] if r.stderr else "")
+                return False, "encode: " + err
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         os.replace(final, dest)
         return True, ""
@@ -187,12 +155,11 @@ def encode_one(item, cfg, scratch_dir):
     except Exception as exc:  # noqa: BLE001 - report any failure, retry next run
         return False, repr(exc)
     finally:
-        for p in (frag, final):
-            if os.path.exists(p):
-                try:
-                    os.remove(p)
-                except OSError:
-                    pass
+        if os.path.exists(final):
+            try:
+                os.remove(final)
+            except OSError:
+                pass
 
 
 def scratch_dir_for(cfg):
@@ -201,18 +168,19 @@ def scratch_dir_for(cfg):
     return d
 
 
-def preflight_ssh(cfg):
-    host = cfg["encode"]["ssh_host"]
-    if not host:
-        return True, "local encode (no ssh_host)"
+def preflight(cfg):
+    """Check that local ffmpeg exists and has the configured encoder."""
+    codec = cfg["encode"]["codec"]
     try:
-        r = subprocess.run(["ssh", *SSH_OPTS, host, "ffmpeg -version"],
+        r = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"],
                            capture_output=True, text=True, timeout=30)
     except Exception as exc:  # noqa: BLE001
-        return False, f"ssh {host}: {exc!r}"
+        return False, f"ffmpeg: {exc!r}"
     if r.returncode != 0:
-        return False, f"ssh {host} failed: {r.stderr[:200]}"
-    return True, f"ssh {host} ok"
+        return False, f"ffmpeg -encoders failed: {r.stderr[:200]}"
+    if not any(line.split()[1:2] == [codec] for line in r.stdout.splitlines()):
+        return False, f"ffmpeg has no {codec} encoder"
+    return True, f"ffmpeg {codec} ok"
 
 
 def _make_monitor(cfg):
@@ -260,7 +228,7 @@ def run_once(cfg, state_path, limit=None, dry_run=False):
     status, message = "success", "no new clips"
     try:
         if items:
-            ok, msg = preflight_ssh(cfg)
+            ok, msg = preflight(cfg)
             if not ok:
                 logger.error("preflight failed: %s", msg)
                 status, message = "error", f"preflight failed: {msg}"
@@ -287,7 +255,7 @@ def run_once(cfg, state_path, limit=None, dry_run=False):
                         _log_skip(cfg, it["rel"], err)
                     save_state(state_path, state)
 
-            with ThreadPoolExecutor(max_workers=cfg.get("workers", 3)) as ex:
+            with ThreadPoolExecutor(max_workers=cfg.get("workers", 1)) as ex:
                 for _ in as_completed([ex.submit(work, it) for it in items]):
                     pass
             save_state(state_path, state)

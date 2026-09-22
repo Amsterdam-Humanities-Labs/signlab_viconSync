@@ -10,3 +10,6 @@ WorkingDirectory=/home/gomer/viconSync
 ExecStart=/usr/bin/python3 /home/gomer/viconSync/compress_blackmagic.py --once
 # One daily encode of the whole backlog can be long; don't let systemd kill it.
 TimeoutStartSec=0
+# Encoding is CPU-heavy on this 4-core box; yield to the sync services.
+Nice=15
+IOSchedulingClass=idle
