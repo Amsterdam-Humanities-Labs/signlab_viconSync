@@ -1,0 +1,66 @@
+diff --git a/fbx_to_shapekeys.py b/fbx_to_shapekeys.py
+index ae87807..6f6ef96 100644
+--- a/fbx_to_shapekeys.py
++++ b/fbx_to_shapekeys.py
+@@ -116,6 +116,24 @@ for _obj_name, _obj, keys in custom_property_objects:
+             seen.add(key)
+             source_keys.append(key)
+ 
++# LOCAL PATCH (viconSync): Blender 4.4 moved F-curves out of Action.fcurves and
++# into slotted layers/strips/channelbags, and 5.x removed the old attribute
++# outright ("'Action' object has no attribute 'fcurves'"). This reaches the
++# curves either way. Only the Blender sampler needs it - Character Creator FBX
++# take the direct-parse fast path and never get here, which is why post-processed
++# Unreal exports were the first files to hit it.
++def _action_fcurves(action):
++    fcurves = getattr(action, "fcurves", None)
++    if fcurves is not None:
++        for fc in fcurves:
++            yield fc
++        return
++    for layer in getattr(action, "layers", []):
++        for strip in getattr(layer, "strips", []):
++            for bag in getattr(strip, "channelbags", []):
++                for fc in getattr(bag, "fcurves", []):
++                    yield fc
++
+ keyed_start = None
+ keyed_end = None
+ for _obj_name, obj, _keys in shape_key_objects:
+@@ -129,7 +147,7 @@ for _obj_name, obj, _keys in shape_key_objects:
+                 if strip.action:
+                     actions.append(strip.action)
+     for action in actions:
+-        for fcurve in action.fcurves:
++        for fcurve in _action_fcurves(action):
+             if not fcurve.data_path.startswith('key_blocks['):
+                 continue
+             for point in fcurve.keyframe_points:
+@@ -147,7 +165,7 @@ for _obj_name, obj, _keys in custom_property_objects:
+                 if strip.action:
+                     actions.append(strip.action)
+     for action in actions:
+-        for fcurve in action.fcurves:
++        for fcurve in _action_fcurves(action):
+             if not (fcurve.data_path.startswith('["') and fcurve.data_path.endswith('"]')):
+                 continue
+             for point in fcurve.keyframe_points:
+@@ -394,7 +412,17 @@ def sample_curve(times, values, time_sec):
+ 
+ 
+ def sample_direct_fbx_property_curves(args):
+-    property_curves = extract_direct_fbx_property_curves(args.fbx)
++    # LOCAL PATCH (viconSync): the hand-rolled binary FBX reader only understands
++    # the property types Character Creator emits. Unreal's post-processed exports
++    # trip it with "Unsupported FBX property type", which used to abort the whole
++    # run instead of falling through to the Blender sampler this function exists
++    # to short-circuit. Treat any parse failure as "no fast path available".
++    # See viconSync/cc_pipeline/patches/.
++    try:
++        property_curves = extract_direct_fbx_property_curves(args.fbx)
++    except Exception as exc:
++        print(f"[shapekeys] direct FBX parse failed ({exc}); using Blender sampler")
++        return None
+     if not property_curves:
+         return None
+ 

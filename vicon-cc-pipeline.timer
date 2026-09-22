@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the CC FBX conversion sweep hourly
+
+[Timer]
+OnCalendar=hourly
+# Offset from the top of the hour so it does not collide with fbx2glb-batch.
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target
