@@ -113,41 +113,72 @@ def test_build_plan_classifies_clips(tmp_path):
 
 
 def _enc_cfg():
-    return {"encode": {"ssh_host": "monsterfish", "scale_width": 1920,
+    return {"encode": {"scale_width": 1920,
                        "scale_height": 1080, "codec": "libx265",
                        "crf": 26, "preset": "fast"}}
 
 
-def test_remote_ffmpeg_cmd_has_scale_codec_crf_and_fragmented_mp4():
-    cmd = cb.remote_ffmpeg_cmd(_enc_cfg(), ["-c:a", "copy"])
+def test_ffmpeg_argv_has_scale_codec_crf_and_faststart():
+    argv = cb.ffmpeg_argv(_enc_cfg(), "/s/in.mp4", "/t/out.mp4", ["-c:a", "copy"])
+    cmd = " ".join(argv)
+    assert argv[0] == "ffmpeg"
+    assert "-i /s/in.mp4" in cmd
     assert "scale=1920:1080" in cmd
     assert "-c:v libx265" in cmd
     assert "-crf 26" in cmd
     assert "-preset fast" in cmd
     assert "-c:a copy" in cmd
-    assert "frag_keyframe" in cmd and "-f mp4 -" in cmd
-    assert cmd.strip().startswith("ffmpeg")
+    assert "-movflags +faststart" in cmd
+    assert argv[-1] == "/t/out.mp4"
 
 
-def test_remote_ffmpeg_cmd_aac_fallback_args():
-    cmd = cb.remote_ffmpeg_cmd(_enc_cfg(), ["-c:a", "aac", "-b:a", "128k"])
+def test_ffmpeg_argv_aac_fallback_args():
+    cmd = " ".join(cb.ffmpeg_argv(_enc_cfg(), "/s/in.mp4", "/t/out.mp4",
+                                  ["-c:a", "aac", "-b:a", "128k"]))
     assert "-c:a aac -b:a 128k" in cmd
 
 
-def test_ssh_argv_targets_host_with_batchmode():
-    argv = cb.ssh_argv(_enc_cfg(), "ffmpeg -i - ...")
-    assert argv[0] == "ssh"
-    assert "monsterfish" in argv
-    assert "BatchMode=yes" in argv
-    assert argv[-1] == "ffmpeg -i - ..."
+def test_encode_one_falls_back_to_aac_and_moves_into_place(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_run_encode(src, out_path, cfg, audio_args):
+        calls.append(audio_args)
+        if audio_args == ["-c:a", "copy"]:
+            return False, "pcm"
+        with open(out_path, "wb") as f:
+            f.write(b"mini")
+        return True, ""
+
+    monkeypatch.setattr(cb, "_run_encode", fake_run_encode)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    item = {"rel": "2026-06-12/a.mp4", "src": "/s/a.mp4",
+            "dest": str(tmp_path / "dest/2026-06-12/a.mp4")}
+    assert cb.encode_one(item, _enc_cfg(), str(scratch)) == (True, "")
+    assert calls == [["-c:a", "copy"], ["-c:a", "aac", "-b:a", "128k"]]
+    assert open(item["dest"], "rb").read() == b"mini"
+    assert list(scratch.iterdir()) == []
 
 
-def test_remux_faststart_argv():
-    argv = cb.remux_faststart_argv("/t/frag.mp4", "/t/out.mp4")
-    assert argv[:3] == ["ffmpeg", "-hide_banner", "-v"]
-    assert "-movflags" in argv and "+faststart" in argv
-    assert argv[-1] == "/t/out.mp4"
-    assert "/t/frag.mp4" in argv
+def test_preflight_fails_without_encoder(monkeypatch):
+    class R:
+        returncode = 0
+        stdout = " V....D libx264              libx264 H.264\n"
+        stderr = ""
+
+    monkeypatch.setattr(cb.subprocess, "run", lambda *a, **k: R())
+    ok, msg = cb.preflight(_enc_cfg())
+    assert not ok and "libx265" in msg
+
+
+def test_preflight_finds_encoder(monkeypatch):
+    class R:
+        returncode = 0
+        stdout = " V....D libx265              libx265 H.265 / HEVC\n"
+        stderr = ""
+
+    monkeypatch.setattr(cb.subprocess, "run", lambda *a, **k: R())
+    assert cb.preflight(_enc_cfg())[0]
 
 
 def test_run_once_encodes_pending_and_records_state(tmp_path, monkeypatch):
@@ -157,7 +188,7 @@ def test_run_once_encodes_pending_and_records_state(tmp_path, monkeypatch):
     cfg = {
         "source_path": str(src), "dest_path": str(dest), "max_attempts": 5,
         "workers": 1,
-        "encode": {"ssh_host": "monsterfish", "scale_width": 1920,
+        "encode": {"scale_width": 1920,
                    "scale_height": 1080, "codec": "libx265", "crf": 26, "preset": "fast"},
         "client_monitor": {"enabled": False},
     }
@@ -170,7 +201,7 @@ def test_run_once_encodes_pending_and_records_state(tmp_path, monkeypatch):
         return True, ""
 
     monkeypatch.setattr(cb, "encode_one", fake_encode_one)
-    monkeypatch.setattr(cb, "preflight_ssh", lambda cfg: (True, "ok"))
+    monkeypatch.setattr(cb, "preflight", lambda cfg: (True, "ok"))
     stats = cb.run_once(cfg, state_path)
     assert stats["ok"] == 1 and stats["err"] == 0
     assert os.path.exists(str(dest / "2026-06-12/new.mp4"))
@@ -185,13 +216,13 @@ def test_run_once_increments_failures_on_error(tmp_path, monkeypatch):
     cfg = {
         "source_path": str(src), "dest_path": str(dest), "max_attempts": 5,
         "workers": 1,
-        "encode": {"ssh_host": "monsterfish", "scale_width": 1920,
+        "encode": {"scale_width": 1920,
                    "scale_height": 1080, "codec": "libx265", "crf": 26, "preset": "fast"},
         "client_monitor": {"enabled": False},
     }
     state_path = str(tmp_path / "state.json")
     monkeypatch.setattr(cb, "encode_one", lambda i, c, s: (False, "boom"))
-    monkeypatch.setattr(cb, "preflight_ssh", lambda cfg: (True, "ok"))
+    monkeypatch.setattr(cb, "preflight", lambda cfg: (True, "ok"))
     stats = cb.run_once(cfg, state_path)
     assert stats["err"] == 1
     saved = cb.load_state(state_path)
@@ -206,7 +237,7 @@ def test_run_once_dry_run_encodes_nothing(tmp_path, monkeypatch):
     cfg = {
         "source_path": str(src), "dest_path": str(dest), "max_attempts": 5,
         "workers": 1,
-        "encode": {"ssh_host": "monsterfish", "scale_width": 1920,
+        "encode": {"scale_width": 1920,
                    "scale_height": 1080, "codec": "libx265", "crf": 26, "preset": "fast"},
         "client_monitor": {"enabled": False},
     }
@@ -253,7 +284,7 @@ def test_run_once_heartbeat_fires_when_no_items(tmp_path, monkeypatch):
     cfg = {
         "source_path": str(src), "dest_path": str(dest), "max_attempts": 5,
         "workers": 1,
-        "encode": {"ssh_host": "monsterfish", "scale_width": 1920,
+        "encode": {"scale_width": 1920,
                    "scale_height": 1080, "codec": "libx265", "crf": 26, "preset": "fast"},
         "client_monitor": {"enabled": True, "api_url": "http://x", "client_id": "c",
                            "client_name": "n"},
@@ -278,14 +309,14 @@ def test_run_once_heartbeat_error_on_preflight_failure(tmp_path, monkeypatch):
     cfg = {
         "source_path": str(src), "dest_path": str(dest), "max_attempts": 5,
         "workers": 1,
-        "encode": {"ssh_host": "monsterfish", "scale_width": 1920,
+        "encode": {"scale_width": 1920,
                    "scale_height": 1080, "codec": "libx265", "crf": 26, "preset": "fast"},
         "client_monitor": {"enabled": True, "api_url": "http://x", "client_id": "c",
                            "client_name": "n"},
     }
     fake = _FakeMonitor()
     monkeypatch.setattr(cb, "_make_monitor", lambda c: fake)
-    monkeypatch.setattr(cb, "preflight_ssh", lambda c: (False, "boom"))
+    monkeypatch.setattr(cb, "preflight", lambda c: (False, "boom"))
     encode_calls = {"n": 0}
     monkeypatch.setattr(cb, "encode_one",
                         lambda i, c, s: encode_calls.__setitem__("n", encode_calls["n"] + 1) or (True, ""))

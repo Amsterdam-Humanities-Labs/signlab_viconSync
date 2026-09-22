@@ -57,10 +57,9 @@
     "state_file": "blackmagic_compress_state.json",
     "log_file": "logs/blackmagic_mini.log",
     "skip_log": "logs/blackmagic_mini_skipped.log",
-    "workers": 3,
+    "workers": 1,
     "max_attempts": 5,
     "encode": {
-      "ssh_host": "monsterfish",
       "scale_width": 1920,
       "scale_height": 1080,
       "codec": "libx265",

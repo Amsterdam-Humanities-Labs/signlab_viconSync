@@ -88,6 +88,15 @@ EXTRA_RECORDING_SUBDIRS = [
     },
 ]
 
+# CC exports get a second conversion on top of the legacy fbx2glb one: the
+# FBXtoGLBCompression pipeline, which produces a retarget-ready GLB (118 joints,
+# centimetres) plus a facial shape-key JSON sidecar. Outputs land in their own
+# directory, so the legacy .glb files and everything reading them are untouched.
+# See cc_pipeline/README.md.
+CC_PIPELINE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  "cc_pipeline", "convert_one.sh")
+CC_PIPELINE_SUBDIR = "CC"
+
 LOG_DIR = "/home/gomer/viconSync/logs"
 LOG_FILE = f"{LOG_DIR}/sync_vicon_rsync.log"
 
@@ -596,6 +605,10 @@ class ViconSync:
                 # Trigger immediate FBX→GLB conversion
                 if filename.lower().endswith('.fbx'):
                     self._convert_fbx_to_glb(filename, local_dir)
+                    # CC exports carry facial blendshapes and a CC skeleton, so
+                    # they also go through the FBXtoGLBCompression pipeline.
+                    if unreal_subdir == CC_PIPELINE_SUBDIR:
+                        self._convert_cc_pipeline(filename, local_dir)
                 return True
             else:
                 logger.error(f"  ✗ Failed to download {filename}: {result.stderr}")
@@ -644,6 +657,42 @@ class ViconSync:
             logger.warning(f"  ✗ GLB conversion timeout for {filename}")
         except Exception as e:
             logger.warning(f"  ✗ GLB conversion error for {filename}: {e}")
+
+    def _convert_cc_pipeline(self, filename, directory):
+        """
+        Run the FBXtoGLBCompression pipeline on a freshly downloaded CC FBX.
+
+        Produces <name>_anim.glb and <name>_shapekeys.json in the pipeline output
+        directory. This is best-effort: the hourly cc-pipeline sweep re-runs
+        anything that fails here, so a failure only ever costs latency, never the
+        file itself.
+
+        Args:
+            filename: Name of the FBX file
+            directory: Directory containing the FBX file
+        """
+        fbx_path = os.path.join(directory, filename)
+
+        try:
+            logger.info(f"  Running CC pipeline on {filename}...")
+            result = subprocess.run(
+                ["bash", CC_PIPELINE_SCRIPT, fbx_path],
+                capture_output=True,
+                text=True,
+                timeout=600  # 10 minutes: two Blender passes plus two node steps
+            )
+
+            if result.returncode == 0:
+                logger.info(f"  ✓ CC pipeline converted {filename}")
+            else:
+                logger.warning(
+                    f"  ✗ CC pipeline failed for {filename}: "
+                    f"{(result.stderr or result.stdout).strip()}"
+                )
+        except subprocess.TimeoutExpired:
+            logger.warning(f"  ✗ CC pipeline timeout for {filename}")
+        except Exception as e:
+            logger.warning(f"  ✗ CC pipeline error for {filename}: {e}")
 
     def batch_sync_subdir(self, base_path, date_dirs, subdir_config):
         """Batch scan and sync files from a specific recording subdirectory."""
@@ -724,7 +773,7 @@ class ViconSync:
             # Download via SCP
             remote_scp_path = full_path.replace('\\', '/')
             scp_cmd = (
-                f'sshpass -p {SSH_PASS} scp -o StrictHostKeyChecking=no '
+                f'sshpass -p {get_vicon_password()} scp -o StrictHostKeyChecking=no '
                 f'{SSH_USER}@{self.host}:{remote_scp_path} {local_file}'
             )
 
@@ -941,7 +990,7 @@ def _control_ssh(command, timeout=20):
         return "", 1
     escaped_command = command.replace('"', '\\"')
     full_cmd = (
-        f'sshpass -p {SSH_PASS} ssh -o StrictHostKeyChecking=no '
+        f'sshpass -p {get_vicon_password()} ssh -o StrictHostKeyChecking=no '
         f'{SSH_USER}@{host} "{escaped_command}"'
     )
     try:
