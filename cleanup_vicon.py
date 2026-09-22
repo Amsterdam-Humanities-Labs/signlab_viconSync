@@ -12,6 +12,7 @@ import re
 import json
 import subprocess
 import logging
+import logging.handlers
 import argparse
 from pathlib import Path
 
@@ -78,7 +79,10 @@ logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] [%(levelname)s] %(message)s',
     handlers=[
-        logging.FileHandler(LOG_FILE),
+        # 5 MB x 5, the same policy as setup_rotating_logger in the
+        # heartbeat client (this script does not import that client).
+        logging.handlers.RotatingFileHandler(
+            LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5),
         logging.StreamHandler(sys.stdout)
     ]
 )
