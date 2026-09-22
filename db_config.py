@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """
 Database configuration parser.
-Reads MySQL credentials from /web/mysql_config.php
+Reads MySQL credentials from <root>/mysql_config.php (normally /web/mysql_config.php)
 """
 
 import re
 import os
 
+from sc_paths import sc_path
+
 
 def get_db_config():
     """Parse PHP config file and return database credentials."""
-    php_config_file = '/web/mysql_config.php'
+    php_config_file = sc_path('mysql_config.php')
 
     if not os.path.exists(php_config_file):
         raise FileNotFoundError(f"MySQL config file not found: {php_config_file}")

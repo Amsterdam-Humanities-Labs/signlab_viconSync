@@ -22,6 +22,7 @@ except ImportError:
     exit(1)
 
 from db_config import get_db_config
+from sc_paths import sc_path
 
 
 # The heartbeat client. Prefer the installed package; fall back to the copy
@@ -44,7 +45,7 @@ class GlbMatcher:
         self.logger = logging.getLogger(__name__)
 
         # GLB search path
-        self.glb_base_path = config.get('glb_matcher', {}).get('glb_base_path', '/web/gebarenoverleg_media/fbx')
+        self.glb_base_path = config.get('glb_matcher', {}).get('glb_base_path', sc_path('media_fbx'))
 
         # Initialize client monitor
         self.client_monitor = None

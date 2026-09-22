@@ -17,6 +17,7 @@ from pathlib import Path
 
 import vicon_host
 from vicon_credentials import get_vicon_password
+from sc_paths import sc_path
 
 # Configuration (same SSH creds as sync_vicon_rsync.py)
 SSH_USER = "vicon"
@@ -39,7 +40,7 @@ CLEANUP_TARGETS = [
         'remote_subdir': 'obs',
         'extension': '.mkv',
         'check_source': 'local',
-        'check_path': '/web/gebarenoverleg_media/razerFiles',
+        'check_path': sc_path('media', 'razerFiles'),
     },
     {
         'name': 'Shogun .mov',

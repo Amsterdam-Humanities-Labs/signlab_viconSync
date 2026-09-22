@@ -15,13 +15,14 @@ from ftplib import FTP
 
 import vicon_host
 from vicon_credentials import get_vicon_password
+from sc_paths import sc_path
 
 # Configuration
 FTP_USER = "vicon"
 # The password is not stored here; get_vicon_password() reads it at call time.
 FTP_BASE_PATH = "/e/Recordings"
-POST_PROCESSED_PATH = "/web/gebarenoverleg_media/fbx/post_processed"
-TARGET_PATH = "/web/gebarenoverleg_media/fbx"
+POST_PROCESSED_PATH = sc_path("media_fbx", "post_processed")
+TARGET_PATH = sc_path("media_fbx")
 CACHE_FILE = "/home/gomer/viconSync/ftp_cache.json"
 
 
