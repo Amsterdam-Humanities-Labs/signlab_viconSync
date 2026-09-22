@@ -54,6 +54,46 @@ def test_control_ssh_returns_error_when_vicon_offline(monkeypatch):
     assert svr._control_ssh("schtasks /run /tn X") == ("", 1)
 
 
+def test_control_ssh_passes_vicon_password(monkeypatch):
+    seen = {}
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = "ok"
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"] = cmd
+        return FakeCompleted()
+
+    monkeypatch.setattr(svr.vicon_host, "resolve_vicon_host_cached",
+                        lambda **kwargs: ("100.0.0.1", "vicon-test"))
+    monkeypatch.setattr(svr.subprocess, "run", fake_run)
+    assert svr._control_ssh("dir") == ("ok", 0)
+    assert "sshpass -p test-password " in seen["cmd"]
+
+
+def test_module_references_no_undefined_globals():
+    # Guards against renames that leave a stale global behind, like the
+    # SSH_PASS references that crashed every sync after the password moved
+    # to get_vicon_password().
+    import builtins
+    import symtable
+
+    source = open("sync_vicon_rsync.py").read()
+    defined = set(vars(svr)) | set(dir(builtins))
+    missing = set()
+
+    def walk(table):
+        for sym in table.get_symbols():
+            if sym.is_referenced() and sym.is_global() and sym.get_name() not in defined:
+                missing.add(sym.get_name())
+        for child in table.get_children():
+            walk(child)
+
+    walk(symtable.symtable(source, "sync_vicon_rsync.py", "exec"))
+    assert missing == set()
+
+
 def test_run_counts_failed_listing_as_error(tmp_path):
     syncer = make_syncer(tmp_path)
     syncer.list_date_directories = lambda base_path: None
@@ -119,3 +159,49 @@ def test_batch_sync_subdir_empty_result_is_not_an_error(tmp_path, monkeypatch):
 def test_module_has_no_hardcoded_vicon_ip():
     source = open("sync_vicon_rsync.py").read()
     assert "100.83.229.92" not in source
+
+
+def test_cc_pipeline_runs_for_cc_subdir_fbx(tmp_path, monkeypatch):
+    """CC exports get the FBXtoGLBCompression pipeline on top of the legacy one."""
+    syncer = make_syncer(tmp_path)
+    calls = []
+    monkeypatch.setattr(syncer, "_convert_fbx_to_glb", lambda f, d: calls.append(("legacy", f)))
+    monkeypatch.setattr(syncer, "_convert_cc_pipeline", lambda f, d: calls.append(("cc", f)))
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    monkeypatch.setattr(svr.subprocess, "run", lambda cmd, **kw: FakeCompleted())
+    monkeypatch.setattr(svr.os.path, "getsize", lambda p: 123)
+    monkeypatch.setattr(syncer.cache, "update_file", lambda *a, **k: None)
+
+    syncer.dry_run = False
+    syncer.sync_file("E:\\Recordings", "2026-08-31", "clip.fbx",
+                     recording_dir="rec1", unreal_subdir="CC")
+
+    assert calls == [("legacy", "clip.fbx"), ("cc", "clip.fbx")]
+
+
+def test_cc_pipeline_skipped_for_non_cc_subdir(tmp_path, monkeypatch):
+    """Vicon/flat exports have no CC skeleton, so the pipeline must not run."""
+    syncer = make_syncer(tmp_path)
+    calls = []
+    monkeypatch.setattr(syncer, "_convert_fbx_to_glb", lambda f, d: calls.append(("legacy", f)))
+    monkeypatch.setattr(syncer, "_convert_cc_pipeline", lambda f, d: calls.append(("cc", f)))
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    monkeypatch.setattr(svr.subprocess, "run", lambda cmd, **kw: FakeCompleted())
+    monkeypatch.setattr(svr.os.path, "getsize", lambda p: 123)
+    monkeypatch.setattr(syncer.cache, "update_file", lambda *a, **k: None)
+
+    syncer.dry_run = False
+    syncer.sync_file("E:\\Recordings", "2026-08-31", "clip.fbx",
+                     recording_dir="rec1", unreal_subdir="Vicon")
+
+    assert calls == [("legacy", "clip.fbx")]

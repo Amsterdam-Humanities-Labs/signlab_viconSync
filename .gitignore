@@ -26,3 +26,4 @@ venv/
 
 # Scratch encode temp on the destination mount (never in-repo, but be safe)
 .blackmagic_mini_tmp/
+cc_pipeline/node_modules

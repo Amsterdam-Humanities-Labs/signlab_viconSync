@@ -19,6 +19,8 @@ import sys
 import re
 import subprocess
 import logging
+import socket
+import requests
 import time
 import json
 import threading
@@ -77,6 +79,14 @@ EXTRA_RECORDING_SUBDIRS = [
     },
 ]
 
+# CC exports get a second conversion on top of the legacy fbx2glb one: the
+# FBXtoGLBCompression pipeline, which produces a retarget-ready GLB (118 joints,
+# centimetres) plus a facial shape-key JSON sidecar. Outputs land in their own
+# directory, so the legacy .glb files and everything reading them are untouched.
+# See cc_pipeline/README.md.
+CC_PIPELINE_SCRIPT = "/home/gomer/viconSync/cc_pipeline/convert_one.sh"
+CC_PIPELINE_SUBDIR = "CC"
+
 LOG_DIR = "/home/gomer/viconSync/logs"
 LOG_FILE = f"{LOG_DIR}/sync_vicon_rsync.log"
 
@@ -110,21 +120,86 @@ CLIENT_MONITOR_NAME = "Vicon File Sync (SSH/SCP)"
 CLIENT_MONITOR_DESCRIPTION = "Syncs FBX/GLB files from E:\\Recordings and D:\\PostExports\\FBX via SSH/SCP"
 CLIENT_MONITOR_INTERVAL = 86400  # 24 hours (runs daily at 2:30 AM)
 
-# Setup logging. Rotating, because this file used to grow without limit on a
-# partition that checkDisk reports on through the same API as the heartbeat.
-setup_rotating_logger(LOG_FILE, fmt='[%(asctime)s] [%(levelname)s] %(message)s',
-                      stream=sys.stdout)
+# Setup logging
+os.makedirs(LOG_DIR, exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 logger = logging.getLogger(__name__)
 
 
-# The heartbeat client. Prefer the installed package; fall back to the copy
-# vendored beside this file, which is what a host that has never run
-# client/install.sh from signlab_client_monitor_api will find. The two are
-# byte-identical - see the header of python_client.py.
-try:
-    from signlab_client_monitor import ClientMonitor, setup_rotating_logger
-except ImportError:
-    from python_client import ClientMonitor, setup_rotating_logger
+class ClientMonitor:
+    """Client Monitor API wrapper for health tracking"""
+
+    def __init__(
+        self,
+        api_url: str,
+        client_id: str,
+        client_name: str,
+        description: str = "",
+        heartbeat_interval: int = 3600
+    ):
+        self.api_url = api_url
+        self.client_id = client_id
+        self.client_name = client_name
+        self.description = description
+        self.heartbeat_interval = heartbeat_interval
+        self.hostname = socket.gethostname()
+
+    def send_heartbeat(self, metadata: Optional[Dict[str, Any]] = None) -> bool:
+        """Send a heartbeat to update the last_seen timestamp"""
+        try:
+            data = {
+                "client_id": self.client_id,
+                "metadata": metadata or {
+                    "last_run": datetime.now().isoformat(),
+                    "hostname": self.hostname
+                }
+            }
+
+            response = requests.post(
+                f"{self.api_url}?action=heartbeat",
+                json=data,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get("success"):
+                logger.info("✓ Heartbeat sent to monitoring system")
+                return True
+            else:
+                logger.warning(f"✗ Heartbeat failed: {result.get('errors')}")
+                return False
+
+        except Exception as e:
+            logger.warning(f"Could not send heartbeat to monitoring system: {e}")
+            return False
+
+    def send_heartbeat_with_stats(
+        self,
+        status: str,
+        message: str,
+        stats: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """Send a heartbeat with status and statistics"""
+        metadata = {
+            "last_run": datetime.now().isoformat(),
+            "hostname": self.hostname,
+            "status": status,
+            "message": message
+        }
+
+        if stats:
+            metadata.update(stats)
+
+        return self.send_heartbeat(metadata)
 
 
 class SyncCache:
@@ -591,6 +666,10 @@ class ViconSync:
                 # Trigger immediate FBX→GLB conversion
                 if filename.lower().endswith('.fbx'):
                     self._convert_fbx_to_glb(filename, local_dir)
+                    # CC exports carry facial blendshapes and a CC skeleton, so
+                    # they also go through the FBXtoGLBCompression pipeline.
+                    if unreal_subdir == CC_PIPELINE_SUBDIR:
+                        self._convert_cc_pipeline(filename, local_dir)
                 return True
             else:
                 logger.error(f"  ✗ Failed to download {filename}: {result.stderr}")
@@ -639,6 +718,42 @@ class ViconSync:
             logger.warning(f"  ✗ GLB conversion timeout for {filename}")
         except Exception as e:
             logger.warning(f"  ✗ GLB conversion error for {filename}: {e}")
+
+    def _convert_cc_pipeline(self, filename, directory):
+        """
+        Run the FBXtoGLBCompression pipeline on a freshly downloaded CC FBX.
+
+        Produces <name>_anim.glb and <name>_shapekeys.json in the pipeline output
+        directory. This is best-effort: the hourly cc-pipeline sweep re-runs
+        anything that fails here, so a failure only ever costs latency, never the
+        file itself.
+
+        Args:
+            filename: Name of the FBX file
+            directory: Directory containing the FBX file
+        """
+        fbx_path = os.path.join(directory, filename)
+
+        try:
+            logger.info(f"  Running CC pipeline on {filename}...")
+            result = subprocess.run(
+                ["bash", CC_PIPELINE_SCRIPT, fbx_path],
+                capture_output=True,
+                text=True,
+                timeout=600  # 10 minutes: two Blender passes plus two node steps
+            )
+
+            if result.returncode == 0:
+                logger.info(f"  ✓ CC pipeline converted {filename}")
+            else:
+                logger.warning(
+                    f"  ✗ CC pipeline failed for {filename}: "
+                    f"{(result.stderr or result.stdout).strip()}"
+                )
+        except subprocess.TimeoutExpired:
+            logger.warning(f"  ✗ CC pipeline timeout for {filename}")
+        except Exception as e:
+            logger.warning(f"  ✗ CC pipeline error for {filename}: {e}")
 
     def batch_sync_subdir(self, base_path, date_dirs, subdir_config):
         """Batch scan and sync files from a specific recording subdirectory."""
@@ -719,7 +834,7 @@ class ViconSync:
             # Download via SCP
             remote_scp_path = full_path.replace('\\', '/')
             scp_cmd = (
-                f'sshpass -p {SSH_PASS} scp -o StrictHostKeyChecking=no '
+                f'sshpass -p {get_vicon_password()} scp -o StrictHostKeyChecking=no '
                 f'{SSH_USER}@{self.host}:{remote_scp_path} {local_file}'
             )
 
@@ -936,7 +1051,7 @@ def _control_ssh(command, timeout=20):
         return "", 1
     escaped_command = command.replace('"', '\\"')
     full_cmd = (
-        f'sshpass -p {SSH_PASS} ssh -o StrictHostKeyChecking=no '
+        f'sshpass -p {get_vicon_password()} ssh -o StrictHostKeyChecking=no '
         f'{SSH_USER}@{host} "{escaped_command}"'
     )
     try:

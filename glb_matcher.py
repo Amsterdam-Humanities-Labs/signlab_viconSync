@@ -10,6 +10,7 @@ import json
 import time
 import logging
 import socket
+import requests
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from pathlib import Path
@@ -24,14 +25,108 @@ except ImportError:
 from db_config import get_db_config
 
 
-# The heartbeat client. Prefer the installed package; fall back to the copy
-# vendored beside this file, which is what a host that has never run
-# client/install.sh from signlab_client_monitor_api will find. The two are
-# byte-identical - see the header of python_client.py.
-try:
-    from signlab_client_monitor import ClientMonitor, setup_rotating_logger
-except ImportError:
-    from python_client import ClientMonitor, setup_rotating_logger
+class ClientMonitor:
+    """Client Monitor API wrapper for Python scripts"""
+
+    def __init__(
+        self,
+        api_url: str,
+        client_id: str,
+        client_name: str,
+        description: str = "",
+        heartbeat_interval: int = 3600
+    ):
+        self.api_url = api_url
+        self.client_id = client_id
+        self.client_name = client_name
+        self.description = description
+        self.heartbeat_interval = heartbeat_interval
+        self.hostname = socket.gethostname()
+        self.logger = logging.getLogger(__name__)
+
+    def register(self, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Register this client with the monitoring system"""
+        data = {
+            "client_id": self.client_id,
+            "client_name": self.client_name,
+            "description": self.description,
+            "heartbeat_interval": self.heartbeat_interval,
+            "metadata": metadata or {
+                "hostname": self.hostname,
+                "python_version": sys.version.split()[0],
+                "registered_at": datetime.now().isoformat()
+            }
+        }
+
+        try:
+            response = requests.post(
+                f"{self.api_url}?action=register",
+                json=data,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get("success"):
+                self.logger.info(f"Client registered successfully: {self.client_id}")
+            else:
+                self.logger.warning(f"Registration failed: {result.get('errors')}")
+
+            return result
+        except Exception as e:
+            self.logger.error(f"Failed to register client: {e}")
+            return {"success": False, "errors": [str(e)]}
+
+    def send_heartbeat(self, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Send a heartbeat to update the last_seen timestamp"""
+        data = {
+            "client_id": self.client_id,
+            "metadata": metadata or {
+                "last_run": datetime.now().isoformat(),
+                "hostname": self.hostname
+            }
+        }
+
+        try:
+            response = requests.post(
+                f"{self.api_url}?action=heartbeat",
+                json=data,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get("success"):
+                status = result.get("data", {}).get("status", "unknown")
+                self.logger.info(f"Heartbeat sent successfully - Status: {status}")
+            else:
+                self.logger.warning(f"Heartbeat failed: {result.get('errors')}")
+
+            return result
+        except Exception as e:
+            self.logger.warning(f"Failed to send heartbeat: {e}")
+            return {"success": False, "errors": [str(e)]}
+
+    def send_heartbeat_with_stats(
+        self,
+        status: str,
+        message: str,
+        stats: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Send a heartbeat with status and statistics"""
+        metadata = {
+            "last_run": datetime.now().isoformat(),
+            "hostname": self.hostname,
+            "status": status,
+            "message": message
+        }
+
+        if stats:
+            metadata.update(stats)
+
+        return self.send_heartbeat(metadata)
 
 
 class GlbMatcher:
@@ -443,9 +538,20 @@ def main():
         config = json.load(f)
 
     # Setup logging
-    setup_rotating_logger(
-        config.get('glb_matcher', {}).get('log_file', 'logs/glb_matcher.log'),
-        fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    log_file = config.get('glb_matcher', {}).get('log_file', 'logs/glb_matcher.log')
+    log_dir = os.path.dirname(log_file)
+
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()
+        ]
+    )
 
     # Create and run matcher
     matcher = GlbMatcher(config)

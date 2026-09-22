@@ -10,6 +10,7 @@ import sys
 import json
 import time
 import logging
+import requests
 import socket
 from ftplib import FTP, error_perm
 from datetime import datetime, timedelta
@@ -26,14 +27,152 @@ except ImportError:
     print("Warning: Database module not available. Install pymysql: pip3 install pymysql")
 
 
-# The heartbeat client. Prefer the installed package; fall back to the copy
-# vendored beside this file, which is what a host that has never run
-# client/install.sh from signlab_client_monitor_api will find. The two are
-# byte-identical - see the header of python_client.py.
-try:
-    from signlab_client_monitor import ClientMonitor, setup_rotating_logger
-except ImportError:
-    from python_client import ClientMonitor, setup_rotating_logger
+class ClientMonitor:
+    """
+    Client Monitor API wrapper for Python scripts
+    """
+
+    def __init__(
+        self,
+        api_url: str,
+        client_id: str,
+        client_name: str,
+        description: str = "",
+        heartbeat_interval: int = 3600
+    ):
+        """
+        Initialize the client monitor
+
+        Args:
+            api_url: Base URL of the Client Monitor API
+            client_id: Unique identifier for this client
+            client_name: Display name for the client
+            description: Description of what this client does
+            heartbeat_interval: Expected heartbeat interval in seconds (default: 3600)
+        """
+        self.api_url = api_url
+        self.client_id = client_id
+        self.client_name = client_name
+        self.description = description
+        self.heartbeat_interval = heartbeat_interval
+        self.hostname = socket.gethostname()
+        self.logger = logging.getLogger(__name__)
+
+    def register(self, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Register this client with the monitoring system
+
+        Args:
+            metadata: Optional custom metadata dictionary
+
+        Returns:
+            API response dictionary
+
+        Raises:
+            requests.exceptions.RequestException: If the API call fails
+        """
+        data = {
+            "client_id": self.client_id,
+            "client_name": self.client_name,
+            "description": self.description,
+            "heartbeat_interval": self.heartbeat_interval,
+            "metadata": metadata or {
+                "hostname": self.hostname,
+                "python_version": sys.version.split()[0],
+                "registered_at": datetime.now().isoformat()
+            }
+        }
+
+        try:
+            response = requests.post(
+                f"{self.api_url}?action=register",
+                json=data,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get("success"):
+                self.logger.info(f"Client registered successfully: {self.client_id}")
+            else:
+                self.logger.warning(f"Registration failed: {result.get('errors')}")
+
+            return result
+        except Exception as e:
+            self.logger.error(f"Failed to register client: {e}")
+            return {"success": False, "errors": [str(e)]}
+
+    def send_heartbeat(self, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Send a heartbeat to update the last_seen timestamp
+
+        Args:
+            metadata: Optional custom metadata to include with the heartbeat
+
+        Returns:
+            API response dictionary
+
+        Raises:
+            requests.exceptions.RequestException: If the API call fails
+        """
+        data = {
+            "client_id": self.client_id,
+            "metadata": metadata or {
+                "last_run": datetime.now().isoformat(),
+                "hostname": self.hostname
+            }
+        }
+
+        try:
+            response = requests.post(
+                f"{self.api_url}?action=heartbeat",
+                json=data,
+                headers={"Content-Type": "application/json"},
+                timeout=10
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            if result.get("success"):
+                status = result.get("data", {}).get("status", "unknown")
+                self.logger.debug(f"Heartbeat sent successfully - Status: {status}")
+            else:
+                self.logger.warning(f"Heartbeat failed: {result.get('errors')}")
+
+            return result
+        except Exception as e:
+            self.logger.debug(f"Failed to send heartbeat: {e}")
+            return {"success": False, "errors": [str(e)]}
+
+    def send_heartbeat_with_stats(
+        self,
+        status: str,
+        message: str,
+        stats: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Send a heartbeat with status and statistics
+
+        Args:
+            status: Status of the execution (e.g., 'success', 'error', 'warning')
+            message: Description message
+            stats: Optional statistics dictionary
+
+        Returns:
+            API response dictionary
+        """
+        metadata = {
+            "last_run": datetime.now().isoformat(),
+            "hostname": self.hostname,
+            "status": status,
+            "message": message
+        }
+
+        if stats:
+            metadata.update(stats)
+
+        return self.send_heartbeat(metadata)
 
 
 class FtpConnectionManager:
@@ -683,9 +822,20 @@ class ViconFtpMonitor:
 
     def _setup_logging(self):
         """Setup logging configuration."""
-        setup_rotating_logger(
-            self.config['output']['log_file'],
-            fmt='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        log_file = self.config['output']['log_file']
+        log_dir = os.path.dirname(log_file)
+
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file),
+                logging.StreamHandler()
+            ]
+        )
 
     def get_output_data(self) -> Dict:
         """Generate output data structure."""

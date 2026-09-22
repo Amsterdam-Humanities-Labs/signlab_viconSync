@@ -1,0 +1,20 @@
+[Unit]
+Description=CC FBX to GLB + shape-key JSON conversion sweep
+Documentation=file:///home/gomer/viconSync/cc_pipeline/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=gomer
+WorkingDirectory=/home/gomer/viconSync
+# Sweeps /web/gebarenoverleg_media/fbx/CC for FBX files with no pipeline output.
+# sync_vicon_rsync.py already converts CC files as they arrive; this is the
+# safety net for anything that failed or landed while the sync was down.
+# -j 2: this box has 4 cores and little spare RAM, and the sweep must not
+# starve the sync and monitor services. The bulk backfill runs on monsterfish.
+ExecStart=/home/gomer/viconSync/cc_pipeline/convert_all.sh -j 2
+# A sweep that finds a large backlog can run for hours; let it finish.
+TimeoutStartSec=0
+Nice=10
+IOSchedulingClass=idle
