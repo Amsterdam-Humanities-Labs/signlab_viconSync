@@ -151,7 +151,7 @@
 
     <!-- ingestion -->
     <foreignObject x="330" y="90" width="225" height="100"><div xmlns="http://www.w3.org/1999/xhtml" class="card blue">
-      <h3>SSH/SCP Sync</h3><div class="sub">sync_vicon_rsync.py · daily 02:30</div>
+      <h3>SSH/SCP Sync</h3><div class="sub">sync_vicon_files.py · daily 02:30</div>
       <p>Pulls FBX/GLB, LiveLink CSV, metadata JSON and Shogun captures from the Vicon PC.</p></div></foreignObject>
     <foreignObject x="330" y="225" width="225" height="100"><div xmlns="http://www.w3.org/1999/xhtml" class="card purple">
       <h3>FTP Monitor</h3><div class="sub">ftp_monitor.py · polls every 1.5 s</div>
@@ -270,7 +270,7 @@
   </table>
 
   <div class="footnote">
-    Sources: code in /home/gomer/viconSync (sync_vicon_rsync.py, ftp_monitor.py, glb_matcher.py, cleanup_vicon.py, matchVicon.py, convert.py, server configs) and live systemd units on this host.
+    Sources: code in /home/gomer/viconSync (sync_vicon_files.py, ftp_monitor.py, glb_matcher.py, cleanup_vicon.py, matchVicon.py, convert.py, server configs) and live systemd units on this host.
     Daily rhythm: 22:00 video convert → 23:00 file matching → 02:30 Vicon sync → 04:00 (weekly) cleanup; FTP Monitor and the Node servers run continuously.
   </div>
 </div>
