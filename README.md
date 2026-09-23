@@ -49,4 +49,4 @@ python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22
 - Vicon PC (SSH and FTP on the tailnet) and Tailscale on the server. `monsterfish` only for the manual CC backfill.
 - MySQL `admin_gebarenoverleg`. [signlab_viconDashboard](https://github.com/Amsterdam-Humanities-Labs/signlab_viconDashboard) and [signlab_sC-Animation-PP](https://github.com/Amsterdam-Humanities-Labs/signlab_sC-Animation-PP) read the rows.
 - [signlab_pythonCron](https://github.com/Amsterdam-Humanities-Labs/signlab_pythonCron) for scheduling. Client Monitor API at `https://signcollect.nl/client_monitor_api/api.php` (optional).
-- Diagram: `docs/pipeline_overview.html`. Design notes: `docs/superpowers/specs/`.
+- Diagram: `docs/pipeline_overview.html`.
