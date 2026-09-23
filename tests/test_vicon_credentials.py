@@ -55,7 +55,7 @@ def test_unparseable_config_is_rejected(tmp_path, monkeypatch):
 
 def test_no_tracked_file_carries_a_literal_password():
     """The scripts must ask vicon_credentials, never inline a credential."""
-    for name in ("sync_vicon_rsync.py", "cleanup_vicon.py", "resync_fbx.py"):
+    for name in ("sync_vicon_files.py", "cleanup_vicon.py", "resync_fbx.py"):
         source = open(name).read()
         assert "get_vicon_password" in source, name
         assert "SSH_PASS =" not in source, name

@@ -1,4 +1,4 @@
-import sync_vicon_rsync as svr
+import sync_vicon_files as svr
 
 
 def make_syncer(tmp_path):
@@ -79,7 +79,7 @@ def test_module_references_no_undefined_globals():
     import builtins
     import symtable
 
-    source = open("sync_vicon_rsync.py").read()
+    source = open("sync_vicon_files.py").read()
     defined = set(vars(svr)) | set(dir(builtins))
     missing = set()
 
@@ -90,7 +90,7 @@ def test_module_references_no_undefined_globals():
         for child in table.get_children():
             walk(child)
 
-    walk(symtable.symtable(source, "sync_vicon_rsync.py", "exec"))
+    walk(symtable.symtable(source, "sync_vicon_files.py", "exec"))
     assert missing == set()
 
 
@@ -157,7 +157,7 @@ def test_batch_sync_subdir_empty_result_is_not_an_error(tmp_path, monkeypatch):
 
 
 def test_module_has_no_hardcoded_vicon_ip():
-    source = open("sync_vicon_rsync.py").read()
+    source = open("sync_vicon_files.py").read()
     assert "100.83.229.92" not in source
 
 

@@ -20,7 +20,7 @@ import vicon_host
 from vicon_credentials import get_vicon_password
 from sc_paths import sc_path
 
-# Configuration (same SSH creds as sync_vicon_rsync.py)
+# Configuration (same SSH creds as sync_vicon_files.py)
 SSH_USER = "vicon"
 # The password is not stored here; get_vicon_password() reads it at call time.
 REMOTE_BASE = "E:\\Recordings"
@@ -175,7 +175,7 @@ def get_rclone_files(rclone_path, extension):
 
 
 def get_date_dirs(ssh_host):
-    """List date directories under E:\\Recordings (same approach as sync_vicon_rsync.py)."""
+    """List date directories under E:\\Recordings (same approach as sync_vicon_files.py)."""
     stdout, returncode = ssh_execute(f'cmd /c dir "{REMOTE_BASE}" /B /AD', ssh_host)
     if returncode != 0:
         logger.error("Failed to list date directories")

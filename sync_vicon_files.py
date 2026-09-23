@@ -98,6 +98,7 @@ CC_PIPELINE_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 CC_PIPELINE_SUBDIR = "CC"
 
 LOG_DIR = "/home/gomer/viconSync/logs"
+# Log name kept from the old script name so existing log readers keep working (#51).
 LOG_FILE = f"{LOG_DIR}/sync_vicon_rsync.log"
 
 # Control HTTP API (localhost only, used by /web/sync_trigger.php)
@@ -1133,7 +1134,7 @@ def main():
     clear_cache = '--clear-cache' in sys.argv
 
     if '--help' in sys.argv or '-h' in sys.argv:
-        print("Usage: python3 sync_vicon_rsync.py [OPTIONS]")
+        print("Usage: python3 sync_vicon_files.py [OPTIONS]")
         print("")
         print("Sync FBX and GLB files from Vicon system via SSH/SCP.")
         print("Runs continuously with 24-hour intervals between syncs.")

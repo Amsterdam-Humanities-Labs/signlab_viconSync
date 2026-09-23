@@ -91,7 +91,7 @@ corrects it, and two properties of that fix matter:
 
 ## Automation
 
-- **On arrival** - `sync_vicon_rsync.py` calls `convert_one.sh` for every new FBX
+- **On arrival** - `sync_vicon_files.py` calls `convert_one.sh` for every new FBX
   landing in the `CC` subdirectory (`_convert_cc_pipeline`).
 - **Hourly sweep** - `vicon-cc-pipeline.timer` runs `convert_all.sh -j 2` as the
   safety net for anything that failed or arrived while the sync was down. Two
