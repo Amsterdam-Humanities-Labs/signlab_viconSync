@@ -2,8 +2,8 @@
 Copies mocap recordings from the Vicon PC to the core server, registers them in MySQL and cleans up the Vicon PC.
 
 ## What it does
-- `sync_vicon_rsync.py` (main job): copies recordings over SSH (SCP) into `/web/gebarenoverleg_media/fbx/`. Sources: `E:\Recordings` (raw, `*/*/unreal/`) and `D:\PostExports\FBX`. It compares FBX and GLB files by size.
-- `ftp_monitor.py` + `db_writer.py`: scan FTP fully at startup, then poll today's folder every 1.5 s. They write `vicon_captures`, `vicon_files`, `vicon_monitor_metadata` and `monitor_output.json`.
+- `sync_vicon_rsync.py` (main job): copies FBX and GLB files over SSH (SCP) into `/web/gebarenoverleg_media/fbx/`. Sources: `E:\Recordings` (raw, `*/*/unreal/`) and `D:\PostExports\FBX`. It compares files by size. From `E:\Recordings` it also copies LiveLink CSVs to `llcsv/`, `metadata/*.json` to `metadata/` and Shogun captures to `shogun_live/`. CC exports also go through `cc_pipeline/convert_one.sh`.
+- `ftp_monitor.py` + `db_writer.py`: scan FTP fully at startup, then poll today's folder every `monitoring.poll_interval` seconds (1.5 in the example config). They write `vicon_captures`, `vicon_files`, `vicon_monitor_metadata` and `monitor_output.json`.
 - `glb_matcher.py` pairs synced FBX files with GLBs. `resync_fbx.py` downloads again over FTP, by hand.
 - `compress_blackmagic.py` makes 1080p HEVC "Mini" copies of Blackmagic 6K clips with local ffmpeg.
 - `cc_pipeline/` turns CC FBX files into retarget-ready GLBs plus shape-key JSON (FBXtoGLBCompression, Blender, node). See `cc_pipeline/README.md`.
@@ -21,11 +21,11 @@ Python 3, no venv. Needs `requests`, `pymysql` and the binaries `ssh`, `scp`, `s
 
 | Entry point | Started by |
 |---|---|
-| `python3 sync_vicon_rsync.py [--dry-run]` | pythonCron, daily 02:30 |
+| `python3 sync_vicon_rsync.py [--dry-run] [--once] [--full] [--clear-cache]` | pythonCron, daily 02:30. Without `--once` it loops every 24 h and serves the control port |
 | `python3 compress_blackmagic.py --once` (`--dry-run`, `--limit 2`) | `vicon-blackmagic-mini.timer`, daily 04:00 |
 | `cc_pipeline/convert_all.sh -j 2` | `vicon-cc-pipeline.timer`, hourly (and per CC file from the sync) |
 | `python3 ftp_monitor.py`, `python3 glb_matcher.py` | long-running |
-| `python3 cleanup_vicon.py`, `python3 resync_fbx.py [--refresh-cache]` | by hand |
+| `python3 cleanup_vicon.py [--dry-run]`, `python3 resync_fbx.py [--refresh-cache]` | by hand |
 
 The schedules live in [signlab_pythonCron](https://github.com/Amsterdam-Humanities-Labs/signlab_pythonCron). It also runs a weekly `cleanup_obs.py` that is not in this repo.
 Tests: `python3 -m pytest tests -q` (all remote calls are mocked).
@@ -42,7 +42,7 @@ python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22
 - `/web/mysql_config.php` on the server holds the MySQL credentials. `db_config.py` parses it.
 - Docroot paths (`/web/...`) come from the vendored `sc_paths.py`: `SC_WEB_ROOT` from the environment or `$SC_ENV_FILE`/`/web/.env`, default `/web`. Edit `sc_paths.py` in [signlab_signcollect-lib](https://github.com/Amsterdam-Humanities-Labs/signlab_signcollect-lib), not here. `VICON_BLACKMAGIC_STATUS_PATH` overrides the path of the status file on the Vicon PC.
 - State: `monitor_state.json` and `blackmagic_compress_state.json`. Delete an entry to force a re-encode. Clear `failures` to retry a parked clip.
-- Logs: `logs/sync_vicon_rsync.log`, `logs/ftp_monitor.log`, `logs/glb_matcher.log`, `logs/blackmagic_mini*.log`.
+- Logs: `logs/sync_vicon_rsync.log`, `logs/cleanup_vicon.log`, `logs/ftp_monitor.log`, `logs/glb_matcher.log`, `logs/blackmagic_mini*.log`.
 - `python_client.py` is a vendored copy of `client/` in [signlab_client_monitor_api](https://github.com/Amsterdam-Humanities-Labs/signlab_client_monitor_api). Imports prefer the installed package. Do not edit the copy.
 
 ## Dependencies
