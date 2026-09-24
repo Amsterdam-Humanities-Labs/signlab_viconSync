@@ -50,3 +50,10 @@ python3 -c "import vicon_host; print(vicon_host.resolve_vicon_host(probe_port=22
 - MySQL `admin_gebarenoverleg`. [signlab_viconDashboard](https://github.com/Amsterdam-Humanities-Labs/signlab_viconDashboard) and [signlab_mocap-postprocessing](https://github.com/Amsterdam-Humanities-Labs/signlab_mocap-postprocessing) read the rows.
 - [signlab_pythonCron](https://github.com/Amsterdam-Humanities-Labs/signlab_pythonCron) for scheduling. Client Monitor API at `https://signcollect.nl/client_monitor_api/api.php` (optional).
 - Diagram: `docs/pipeline_overview.html`.
+
+## License and citation
+
+Apache License 2.0, copyright University of Amsterdam: see [LICENSE](LICENSE) and
+[NOTICE](NOTICE). You may use it, also commercially, as long as you credit
+Gomer Otterspeer / University of Amsterdam as the source. To cite it, use
+[CITATION.cff](CITATION.cff) (the *Cite this repository* button on GitHub) or the DOI [10.21942/uva.33980398](https://doi.org/10.21942/uva.33980398).
